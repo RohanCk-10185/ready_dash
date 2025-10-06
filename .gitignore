@@ -1,0 +1,24 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# SQLite DB
+*.db
+
+# AWS CLI bundle
+awscli-bundle/
+awscli-bundle.zip
+
+# Virtual environments
+.env/
+.venv/
+venv/
+ENV/
+
+# OS files
+.DS_Store
+
+# dotenv file
+.env

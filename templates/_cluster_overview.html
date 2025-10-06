@@ -1,0 +1,132 @@
+<!-- Overview Tab - Updated endpoint access display -->
+<div id="overview" class="tab-content active">
+    <style>
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        #overview.fade-in {
+            animation: fadeIn 0.2s ease-in-out;
+        }
+    </style>
+
+    <div class="widget">
+        <div class="widget-header">
+            <h2>Cluster Details</h2>
+        </div>
+        <div class="widget-content">
+            <div class="info-grid"> 
+                <strong>API server endpoint</strong> <span class="code">{{ cluster.endpoint or 'N/A' }}</span>
+                <strong>Cluster IAM role</strong> <span class="code">{{ cluster.role_arn or 'N/A' }}</span>
+                <strong>OpenID Connect provider</strong> <span class="code">{{ cluster.oidc_provider_url or 'Not available' }}</span>
+                <strong>Cluster ARN</strong> <span class="code">{{ cluster.arn }}</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="widget-grid-dynamic" style="grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));">
+        <div class="widget">
+            <div class="widget-header"><h2>Cluster Info</h2></div>
+            <div class="widget-content">
+                <div class="info-grid">
+                    <strong>Status</strong><span class="status-badge status-{{ cluster.status.lower() if cluster.status else 'unknown' }}">{{ cluster.status }}</span>
+                    <strong>K8s Version</strong><span>{{ cluster.version }}</span>
+                    <strong>Platform Version</strong><span>{{ cluster.platformVersion }}</span>
+                    <strong>Created At</strong><span>{{ cluster.createdAt.strftime('%Y-%m-%d %H:%M Z') if cluster.createdAt else 'N/A' }}</span>
+                    <strong>Account ID</strong><span>{{ cluster.account_id }}</span>
+                    <strong>Region</strong><span>{{ cluster.region }}</span>
+                </div>
+            </div>
+        </div>
+        <div class="widget">
+            <div class="widget-header"><h2>EKS Auto Mode</h2></div>
+            <div class="widget-content">
+                <div class="info-grid">
+                    <strong>Status</strong>
+                    <span class="status-badge status-{{ 'active' if cluster.eks_auto_mode == 'Enabled' else 'disabled' }}">{{ cluster.eks_auto_mode }}</span>
+                    <strong style="grid-column: 1 / -1; margin-top: 1rem; color: var(--text-secondary); font-weight: 400; font-size: .9rem;">
+                        EKS automates routine cluster tasks for compute, storage, and networking to meet application compute needs.
+                    </strong>
+                </div>
+            </div>
+        </div>
+        <div class="widget">
+            <div class="widget-header"><h2>Access Configuration</h2></div>
+            <div class="widget-content">
+                {% set ac = cluster.access_config or {} %}
+                <div class="info-grid">
+                    <strong>Authentication Mode</strong>
+                    <span>{{ ac.authenticationMode or 'Unknown' }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="widget">
+        <div class="widget-header"><h2>Networking & Security</h2></div>
+        <div class="widget-content">
+            {% if cluster.networking %}
+            <div class="summary-grid">
+                <div><strong>VPC ID:</strong> <span class="code">{{ cluster.networking.vpcId or 'N/A' }}</span></div>
+                <div><strong>Endpoint Access:</strong> 
+                    {% set public_enabled = cluster.networking.endpointPublicAccess %}
+                    {% set private_enabled = cluster.networking.endpointPrivateAccess %}
+                    {% if public_enabled and private_enabled %}
+                        <span class="status-badge status-active">Public and Private</span>
+                    {% elif public_enabled %}
+                        <span class="status-badge status-active">Public</span>
+                    {% elif private_enabled %}
+                        <span class="status-badge status-active">Private</span>
+                    {% else %}
+                        <span class="status-badge status-failed">None</span>
+                    {% endif %}
+                </div>
+                <div><strong>Cluster security group:</strong> 
+                    <span class="code">{{ cluster.networking.clusterSecurityGroupId or 'N/A' }}</span>
+                </div>
+                <div><strong>Public access CIDRs:</strong> 
+                    <span class="code">{{ (cluster.networking.publicAccessCidrs or ['N/A']) | join(', ') }}</span>
+                </div>
+                <div style="grid-column: 1 / -1;"><strong>Subnets:</strong> 
+                    <div class="tags-container" style="margin-top: 5px;">
+                        {% for id in cluster.networking.subnetIds %}
+                            <span class="tag code">{{ id }}</span>
+                        {% else %}
+                            <span>N/A</span>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <div class="summary-grid">
+                <div><strong>Networking info not available</strong></div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if cluster.health_issues %}
+    <div class="widget">
+        <div class="widget-header"><h2><i data-feather="alert-circle" style="color: var(--status-updating);"></i> Health Issues</h2></div>
+        <div class="widget-content">
+            {% for issue in cluster.health_issues %}
+            <div class="health-issue-box">
+                <strong class="code">{{ issue.code }}</strong>
+                <p>{{ issue.message }}</p>
+                <span>Resource IDs: {% for id in issue.resourceIds %}<span class="tag code">{{ id }}</span>{% endfor %}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+    window.addEventListener('load', () => {
+        const overviewTab = document.getElementById('overview');
+        if (overviewTab) {
+            overviewTab.classList.add('fade-in');
+        }
+    });
+</script>

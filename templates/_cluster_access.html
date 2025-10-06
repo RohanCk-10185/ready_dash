@@ -1,0 +1,65 @@
+<div id="access" class="tab-content">
+    <style>
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        #access.fade-in { animation: fadeIn 0.2s ease-in-out; }
+        .info-grid { display: grid; grid-template-columns: auto 1fr; gap: 1rem 1.5rem; align-items: center; }
+        .info-grid strong { font-weight: 500; color: var(--text-secondary); text-align: left; }
+    </style>
+
+    <div class="widget">
+        <div class="widget-header"><h2>Access Configuration</h2></div>
+        <div class="widget-content">
+            <div class="info-grid">
+                <strong>Authentication Mode</strong>
+                <span class="code">{{ (cluster.access_config.authenticationMode if cluster.access_config else None) or 'N/A' }}</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="widget">
+        <div class="widget-header"><h2>IAM access entries</h2></div>
+        <div class="widget-content" style="padding:0;">
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>IAM principal ARN</th>
+                            <th>Type</th>
+                            <th>Username</th>
+                            <th>Group names</th>
+                            <th>Access policies</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for e in cluster.access_entries %}
+                        <tr>
+                            <td class="code">{{ e.principalArn }}</td>
+                            <td>{{ e.type or 'Standard' }}</td>
+                            <td class="code">{{ e.username or '-' }}</td>
+                            <td>{{ (e.groups or []) | join(', ') or '-' }}</td>
+                            <td>{{ (e.access_policies or []) | join(', ') or '-' }}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="5" class="text-muted" style="text-align:center; padding: 2rem;">No access entries found.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    window.addEventListener('load', () => {
+        const tab = document.getElementById('access');
+        if (tab) { tab.classList.add('fade-in'); }
+    });
+</script>
+
+
