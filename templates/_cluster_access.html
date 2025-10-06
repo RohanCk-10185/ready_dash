@@ -8,6 +8,23 @@
         #access.fade-in { animation: fadeIn 0.2s ease-in-out; }
         .info-grid { display: grid; grid-template-columns: auto 1fr; gap: 1rem 1.5rem; align-items: center; }
         .info-grid strong { font-weight: 500; color: var(--text-secondary); text-align: left; }
+
+        /* Access entries UI enhancements */
+        .access-toolbar { display: flex; justify-content: space-between; align-items: center; padding: .75rem 1rem; border-bottom: 1px solid var(--border-color); background-color: var(--surface-color); }
+        .access-search { display: flex; gap: .5rem; align-items: center; }
+        .access-search input { padding: .5rem .75rem; border: 1px solid var(--border-color); border-radius: 6px; min-width: 300px; background: var(--bg-color); color: var(--text-primary); }
+        .pill { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px; font-size: .75rem; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-secondary); margin: 2px; }
+        .pill.primary { background: var(--primary-color-light); color: var(--primary-color); border-color: transparent; }
+        .code.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: .85rem; }
+        .muted { color: var(--text-muted); }
+        .table-container.sticky-head thead th { position: sticky; top: 0; background: var(--surface-color); z-index: 1; }
+        /* Fit-to-page tweaks */
+        #access .table-container { overflow-x: hidden; }
+        #access table.data-table { table-layout: fixed; }
+        #access table.data-table th, #access table.data-table td { white-space: normal; word-break: break-word; }
+        #access .arn-cell { word-break: break-all; overflow-wrap: anywhere; }
+        #access table.data-table td, #access table.data-table th { padding: .6rem .7rem; }
+        .table-note { padding: .75rem 1rem; color: var(--text-secondary); }
     </style>
 
     <div class="widget">
@@ -23,30 +40,43 @@
     <div class="widget">
         <div class="widget-header"><h2>IAM access entries</h2></div>
         <div class="widget-content" style="padding:0;">
-            <div class="table-container">
-                <table class="data-table">
+            <div class="access-toolbar">
+                <div class="access-search">
+                    <i data-feather="search" class="muted"></i>
+                    <input id="access-filter" type="text" placeholder="Find access entry by property filtering" />
+                </div>
+                <div class="muted">Total: <span id="access-count">{{ (cluster.access_entries or []) | length }}</span></div>
+            </div>
+            <div class="table-container sticky-head">
+                <table class="data-table" id="access-table">
                     <thead>
                         <tr>
-                            <th>IAM principal ARN</th>
-                            <th>Type</th>
-                            <th>Username</th>
-                            <th>Group names</th>
-                            <th>Access policies</th>
+                            <th style="width: 38%;">IAM principal ARN</th>
+                            <th style="width: 10%;">Type</th>
+                            <th style="width: 26%;">Username</th>
+                            <th style="width: 13%;">Group names</th>
+                            <th style="width: 13%;">Access policies</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for e in cluster.access_entries %}
                         <tr>
-                            <td class="code">{{ e.principalArn }}</td>
-                            <td>{{ e.type or 'Standard' }}</td>
-                            <td class="code">{{ e.username or '-' }}</td>
-                            <td>{{ (e.groups or []) | join(', ') or '-' }}</td>
-                            <td>{{ (e.access_policies or []) | join(', ') or '-' }}</td>
+                            <td class="code mono arn-cell">{{ e.principalArn }}</td>
+                            <td><span class="pill primary">{{ e.type or 'Standard' }}</span></td>
+                            <td class="code mono">{{ e.username or '-' }}</td>
+                            <td>
+                                {% if e.groups and e.groups|length > 0 %}
+                                    {% for g in e.groups %}<span class="pill">{{ g }}</span>{% endfor %}
+                                {% else %}<span class="muted">-</span>{% endif %}
+                            </td>
+                            <td>
+                                {% if e.access_policies and e.access_policies|length > 0 %}
+                                    {% for p in e.access_policies %}<span class="pill">{{ p }}</span>{% endfor %}
+                                {% else %}<span class="muted">-</span>{% endif %}
+                            </td>
                         </tr>
                         {% else %}
-                        <tr>
-                            <td colspan="5" class="text-muted" style="text-align:center; padding: 2rem;">No access entries found.</td>
-                        </tr>
+                        <tr><td colspan="5" class="text-muted" style="text-align:center; padding: 2rem;">No access entries found.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -59,6 +89,25 @@
     window.addEventListener('load', () => {
         const tab = document.getElementById('access');
         if (tab) { tab.classList.add('fade-in'); }
+
+            // Simple client-side filtering for access entries
+            const input = document.getElementById('access-filter');
+            const table = document.getElementById('access-table');
+            if (input && table) {
+                input.addEventListener('input', () => {
+                    const q = input.value.toLowerCase();
+                    let visible = 0;
+                    table.querySelectorAll('tbody tr').forEach(row => {
+                        const text = row.textContent.toLowerCase();
+                        const match = text.includes(q);
+                        row.style.display = match ? '' : 'none';
+                        if (match) visible++;
+                    });
+                    const countEl = document.getElementById('access-count');
+                    if (countEl) countEl.textContent = visible.toString();
+                });
+            }
+            feather.replace();
     });
 </script>
 

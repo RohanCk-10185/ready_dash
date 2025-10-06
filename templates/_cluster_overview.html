@@ -51,16 +51,6 @@
                 </div>
             </div>
         </div>
-        <div class="widget">
-            <div class="widget-header"><h2>Access Configuration</h2></div>
-            <div class="widget-content">
-                {% set ac = cluster.access_config or {} %}
-                <div class="info-grid">
-                    <strong>Authentication Mode</strong>
-                    <span>{{ ac.authenticationMode or 'Unknown' }}</span>
-                </div>
-            </div>
-        </div>
     </div>
 
     <div class="widget">
