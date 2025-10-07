@@ -37,6 +37,7 @@ from data_updater import update_all_data, update_single_cluster_data
 from aws_data_fetcher import (
     upgrade_nodegroup_version,
     get_cluster_metrics,
+    get_control_plane_logs,
     get_k8s_api_client,
     get_role_arn_for_account,
     fetch_access_entries_for_cluster,
@@ -203,6 +204,12 @@ async def get_metrics_api(account_id: str, region: str, cluster_name: str):
     role_arn = get_role_arn_for_account(account_id)
     metrics = get_cluster_metrics(account_id, region, cluster_name, role_arn)
     return JSONResponse(content=metrics, status_code=500 if "error" in metrics else 200)
+
+@app.get("/api/control-plane-logs/{account_id}/{region}/{cluster_name}")
+async def get_control_plane_logs_api(account_id: str, region: str, cluster_name: str):
+    role_arn = get_role_arn_for_account(account_id)
+    logs = get_control_plane_logs(account_id, region, cluster_name, role_arn)
+    return JSONResponse(content=logs, status_code=500 if "error" in logs else 200)
 
 @app.get("/api/workloads/{account_id}/{region}/{cluster_name}", response_class=JSONResponse)
 def get_workloads_api(account_id: str, region: str, cluster_name: str, db: Session = Depends(database.get_db)):

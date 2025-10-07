@@ -438,6 +438,113 @@ def upgrade_nodegroup_version(account_id, region, cluster_name, nodegroup_name, 
     except ClientError as e:
         return {"error": e.response['Error']['Message']}
 
+# --- Control Plane Logs Fetcher ---
+def get_control_plane_logs(account_id, region, cluster_name, role_arn=None):
+    """Fetches control plane logs metrics from CloudWatch for EKS cluster."""
+    session = get_session(role_arn)
+    if not session:
+        return {"error": f"Failed to get session for account {account_id}."}
+
+    cw_client = session.client('cloudwatch', region_name=region)
+    
+    # Control plane logs metrics definitions
+    control_plane_metrics = {
+        # API Server Request Metrics
+        "apiserver_request_total": ('apiserver_request_total', 'Sum'),
+        "apiserver_request_total_4XX": ('apiserver_request_total_4XX', 'Sum'),
+        "apiserver_request_total_5XX": ('apiserver_request_total_5XX', 'Sum'),
+
+        # Storage Metrics
+        # "apiserver_storage_objects": ('apiserver_storage_objects', 'Average'),
+        "apiserver_storage_size_bytes": ('apiserver_storage_size_bytes', 'Maximum'),
+        
+        # API server request latency
+        "apiserver_request_duration_seconds": ('apiserver_request_duration_seconds', 'Average'),
+        "apiserver_request_duration_seconds_p50": ('apiserver_request_duration_seconds', 'Average'),
+        "apiserver_request_duration_seconds_p90": ('apiserver_request_duration_seconds', 'Average'),
+        "apiserver_request_duration_seconds_p99": ('apiserver_request_duration_seconds_GET_P99', 'Average'),
+        
+        # REST Client Metrics
+        "rest_client_requests_total": ('rest_client_requests_total', 'Sum'),
+        "rest_client_request_duration_seconds": ('rest_client_request_duration_seconds', 'Average'),
+        
+        # Admission Controller
+        "apiserver_admission_controller_admission_duration_seconds": ('apiserver_admission_controller_admission_duration_seconds', 'Average'),
+        "apiserver_admission_controller_admission_duration_seconds_p50": ('apiserver_admission_controller_admission_duration_seconds', 'Average'),
+        "apiserver_admission_controller_admission_duration_seconds_p90": ('apiserver_admission_controller_admission_duration_seconds', 'Average'),
+        "apiserver_admission_controller_admission_duration_seconds_p99": ('apiserver_admission_controller_admission_duration_seconds', 'Average'),
+        
+        # ETCD Metrics
+        "etcd_request_duration_seconds": ('etcd_request_duration_seconds', 'Average'),
+        "etcd_request_duration_seconds_p50": ('etcd_request_duration_seconds', 'Average'),
+        "etcd_request_duration_seconds_p90": ('etcd_request_duration_seconds', 'Average'),
+        "etcd_request_duration_seconds_p99": ('etcd_request_duration_seconds', 'Average'),
+        
+        
+        
+        # Watch Cache Metrics
+        "apiserver_watch_cache_capacity": ('apiserver_watch_cache_capacity', 'Average'),
+        "apiserver_watch_cache_capacity_increase_total": ('apiserver_watch_cache_capacity_increase_total', 'Sum'),
+        "apiserver_watch_cache_capacity_decrease_total": ('apiserver_watch_cache_capacity_decrease_total', 'Sum'),
+    }
+
+    queries = []
+    for i, (key, (name, stat)) in enumerate(control_plane_metrics.items()):
+        # For request metrics, we need to add dimensions for status codes
+        dimensions = [{'Name': 'ClusterName', 'Value': cluster_name}]
+        
+        queries.append({
+            'Id': f'cp{i}', 'Label': key,
+            'MetricStat': {
+                'Metric': {
+                    'Namespace': 'AWS/EKS',
+                    'MetricName': name,
+                    'Dimensions': dimensions
+                },
+                'Period': 60,
+                'Stat': stat
+            },
+            'ReturnData': True
+        })
+
+    try:
+        response = cw_client.get_metric_data(
+            MetricDataQueries=queries,
+            StartTime=datetime.now(timezone.utc) - timedelta(hours=6),
+            EndTime=datetime.now(timezone.utc),
+            ScanBy='TimestampDescending'
+        )
+        
+        # Process the response to format it similar to the image
+        processed_data = {}
+        for res in response['MetricDataResults']:
+            label = res['Label']
+            timestamps = [ts.isoformat() for ts in res['Timestamps']]
+            values = res['Values']
+            
+            # Calculate current value (latest non-null value)
+            current_value = None
+            for val in reversed(values):
+                if val is not None:
+                    current_value = val
+                    break
+            
+            processed_data[label] = {
+                'timestamps': timestamps,
+                'values': values,
+                'current_value': current_value,
+                'unit': res.get('Unit', 'Count')
+            }
+        
+        return processed_data
+        
+    except ClientError as e:
+        logging.error(f"Could not fetch control plane logs for {cluster_name}. Ensure Container Insights is enabled. Error: {e}")
+        return {'error': f"Could not fetch control plane logs. Ensure Container Insights is enabled. Error: {e.response['Error']['Message']}"}
+    except Exception as e:
+        logging.error(f"An unexpected error occurred fetching control plane logs for {cluster_name}: {e}")
+        return {'error': f'An unexpected error occurred fetching control plane logs: {str(e)}'}
+
 # --- Metrics Fetcher ---
 def get_cluster_metrics(account_id, region, cluster_name, role_arn=None):
     session = get_session(role_arn)
