@@ -453,16 +453,10 @@ def get_control_plane_logs(account_id, region, cluster_name, role_arn=None):
         "apiserver_request_total": ('apiserver_request_total', 'Sum'),
         "apiserver_request_total_4XX": ('apiserver_request_total_4XX', 'Sum'),
         "apiserver_request_total_5XX": ('apiserver_request_total_5XX', 'Sum'),
-
-        # Storage Metrics
-        # "apiserver_storage_objects": ('apiserver_storage_objects', 'Average'),
-        "apiserver_storage_size_bytes": ('apiserver_storage_size_bytes', 'Maximum'),
+        "apiserver_request_total_429": ('apiserver_request_total_429', 'Sum'),
         
-        # API server request latency
-        "apiserver_request_duration_seconds": ('apiserver_request_duration_seconds', 'Average'),
-        "apiserver_request_duration_seconds_p50": ('apiserver_request_duration_seconds', 'Average'),
-        "apiserver_request_duration_seconds_p90": ('apiserver_request_duration_seconds', 'Average'),
-        "apiserver_request_duration_seconds_p99": ('apiserver_request_duration_seconds_GET_P99', 'Average'),
+        # Storage Metrics
+        "apiserver_storage_size_bytes": ('apiserver_storage_size_bytes', 'Maximum'),
         
         # REST Client Metrics
         "rest_client_requests_total": ('rest_client_requests_total', 'Sum'),
@@ -473,14 +467,6 @@ def get_control_plane_logs(account_id, region, cluster_name, role_arn=None):
         "apiserver_admission_controller_admission_duration_seconds_p50": ('apiserver_admission_controller_admission_duration_seconds', 'Average'),
         "apiserver_admission_controller_admission_duration_seconds_p90": ('apiserver_admission_controller_admission_duration_seconds', 'Average'),
         "apiserver_admission_controller_admission_duration_seconds_p99": ('apiserver_admission_controller_admission_duration_seconds', 'Average'),
-        
-        # ETCD Metrics
-        "etcd_request_duration_seconds": ('etcd_request_duration_seconds', 'Average'),
-        "etcd_request_duration_seconds_p50": ('etcd_request_duration_seconds', 'Average'),
-        "etcd_request_duration_seconds_p90": ('etcd_request_duration_seconds', 'Average'),
-        "etcd_request_duration_seconds_p99": ('etcd_request_duration_seconds', 'Average'),
-        
-        
         
         # Watch Cache Metrics
         "apiserver_watch_cache_capacity": ('apiserver_watch_cache_capacity', 'Average'),
@@ -501,7 +487,7 @@ def get_control_plane_logs(account_id, region, cluster_name, role_arn=None):
                     'MetricName': name,
                     'Dimensions': dimensions
                 },
-                'Period': 60,
+                'Period': 300,
                 'Stat': stat
             },
             'ReturnData': True

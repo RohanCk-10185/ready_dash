@@ -296,48 +296,34 @@
                 
                 <div class="log-metric-card">
                     <div class="log-metric-header">
-                        <h5>Request Duration (ms)</h5>
+                        <h5>Requests HTTP 429</h5>
                         <div class="log-metric-actions">
                             <i data-feather="info" class="info-icon"></i>
                             <i data-feather="more-vertical" class="more-icon"></i>
                         </div>
                     </div>
-                    <div class="log-metric-value" id="requestDurationValue">-</div>
+                    <div class="log-metric-value" id="requests429Value">-</div>
                     <div class="log-metric-chart">
-                        <canvas id="requestDurationChart"></canvas>
+                        <canvas id="requests429Chart"></canvas>
                     </div>
-                    <div class="log-metric-legend">apiserver_request_duration_seconds</div>
+                    <div class="log-metric-legend">apiserver_request_total_429</div>
                 </div>
                 
                 <div class="log-metric-card">
                     <div class="log-metric-header">
-                        <h5>ETCD Duration (ms)</h5>
+                        <h5>Storage Size Bytes</h5>
                         <div class="log-metric-actions">
                             <i data-feather="info" class="info-icon"></i>
                             <i data-feather="more-vertical" class="more-icon"></i>
                         </div>
                     </div>
-                    <div class="log-metric-value" id="etcdDurationValue">-</div>
+                    <div class="log-metric-value" id="storageSizeValue">-</div>
                     <div class="log-metric-chart">
-                        <canvas id="etcdDurationChart"></canvas>
+                        <canvas id="storageSizeChart"></canvas>
                     </div>
-                    <div class="log-metric-legend">etcd_request_duration_seconds</div>
+                    <div class="log-metric-legend">apiserver_storage_size_bytes</div>
                 </div>
                 
-                <div class="log-metric-card">
-                    <div class="log-metric-header">
-                        <h5>Storage Objects</h5>
-                        <div class="log-metric-actions">
-                            <i data-feather="info" class="info-icon"></i>
-                            <i data-feather="more-vertical" class="more-icon"></i>
-                        </div>
-                    </div>
-                    <div class="log-metric-value" id="storageObjectsValue">-</div>
-                    <div class="log-metric-chart">
-                        <canvas id="storageObjectsChart"></canvas>
-                    </div>
-                    <div class="log-metric-legend">apiserver_storage_objects</div>
-                </div>
             </div>
             
             <div class="logs-loading" id="controlPlaneLogsLoading" style="display: none;">
@@ -428,28 +414,12 @@
         // Update 5XX Requests chart
         updateLogChart('requests5XXChart', 'requests5XXValue', data.apiserver_request_total_5XX, '5XX Requests');
         
-        // Update Request Duration chart (convert seconds to milliseconds)
-        if (data.apiserver_request_duration_seconds) {
-            const durationData = {
-                ...data.apiserver_request_duration_seconds,
-                values: data.apiserver_request_duration_seconds.values.map(v => v ? v * 1000 : v),
-                current_value: data.apiserver_request_duration_seconds.current_value ? data.apiserver_request_duration_seconds.current_value * 1000 : null
-            };
-            updateLogChart('requestDurationChart', 'requestDurationValue', durationData, 'Request Duration (ms)');
-        }
+        // Update 429 Requests chart
+        updateLogChart('requests429Chart', 'requests429Value', data.apiserver_request_total_429, '429 Requests');
         
-        // Update ETCD Duration chart (convert seconds to milliseconds)
-        if (data.etcd_request_duration_seconds) {
-            const etcdData = {
-                ...data.etcd_request_duration_seconds,
-                values: data.etcd_request_duration_seconds.values.map(v => v ? v * 1000 : v),
-                current_value: data.etcd_request_duration_seconds.current_value ? data.etcd_request_duration_seconds.current_value * 1000 : null
-            };
-            updateLogChart('etcdDurationChart', 'etcdDurationValue', etcdData, 'ETCD Duration (ms)');
-        }
+        // Update Storage Size chart
+        updateLogChart('storageSizeChart', 'storageSizeValue', data.apiserver_storage_size_bytes, 'Storage Size Bytes');
         
-        // Update Storage Objects chart
-        updateLogChart('storageObjectsChart', 'storageObjectsValue', data.apiserver_storage_objects, 'Storage Objects');
     }
     
     function updateLogChart(canvasId, valueId, metricData, title) {
