@@ -625,15 +625,20 @@ def get_security_insights(cluster_raw, eks_client):
     
     if endpoint_public and endpoint_private:
         access_type = "Public and Private"
+        security_status = "Attention"  # Red - not secure
     elif endpoint_public:
         access_type = "Public"
+        security_status = "Attention"  # Red - not secure
     elif endpoint_private:
         access_type = "Private"
+        security_status = "Passing"    # Green - secure
     else:
         access_type = "None"
+        security_status = "Attention"  # Red - no access
     
     insights['endpoint_access'] = {
-        "status": access_type,
+        "status": security_status,  # Use security status instead of access type
+        "access_type": access_type,  # Keep access type for display
         "public_enabled": endpoint_public,
         "private_enabled": endpoint_private,
         "description": "Shows the cluster's API server endpoint access configuration."

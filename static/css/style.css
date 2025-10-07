@@ -365,6 +365,17 @@ padding: 0 2rem 1.5rem 2rem;
     background-color: #e9ecef; color: #495057;
 }
 
+/* Endpoint Access Status Colors */
+.status-badge.status-endpoint-private {
+    background-color: #d1e7dd; color: #0f5132; /* Green for Private */
+}
+.status-badge.status-endpoint-public {
+    background-color: #f8d7da; color: #58151c; /* Red for Public */
+}
+.status-badge.status-endpoint-public-private {
+    background-color: #fff3cd; color: #664d03; /* Yellow for Public & Private */
+}
+
 /* --- Cluster Detail Page --- */
 .back-link {
     display: inline-flex;
