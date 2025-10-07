@@ -81,6 +81,7 @@
             <button class="tab-link" onclick="openTab(event, 'addons')"><i data-feather="box"></i>Add-ons</button>
             <button class="tab-link" onclick="openTab(event, 'resources')"><i data-feather="grid"></i>Resources</button>
             <button class="tab-link" onclick="openTab(event, 'observability')"><i data-feather="bar-chart-2"></i>Observability</button>
+            <button class="tab-link" onclick="openTab(event, 'control-plane-logs')"><i data-feather="activity"></i>Control Plane Logs</button>
             <button class="tab-link" onclick="openTab(event, 'insights')"><i data-feather="zap"></i>Analysis & Insights</button>
         </div>
 
@@ -90,6 +91,7 @@
         {% include '_cluster_addons.html' %}
         {% include '_cluster_resources.html' %}
         {% include '_cluster_observability.html' %}
+        {% include '_cluster_control_plane_logs.html' %}
         {% include '_cluster_insights.html' %}
     </div>
 
@@ -117,7 +119,7 @@
     
     // FIX: Use the 'default' filter to provide a fallback value *before* tojson is called.
     // This makes the template more resilient and prevents the "Undefined" error.
-    const initialWorkloadsError = {{ cluster.workloads_error | default(none) | tojson | safe }};
+    const initialWorkloadsError = null;
 
     let resourcesTabInitialized = false;
     let resourcesDataLoading = false; // Flag to prevent multiple concurrent fetches

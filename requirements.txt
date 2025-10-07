@@ -37,3 +37,7 @@ websocket-client==1.8.0
 
 # Database
 SQLAlchemy==2.0.41
+
+uvicorn
+
+wsproto
