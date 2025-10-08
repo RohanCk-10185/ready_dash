@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block title %}EKS Dashboard Overview{% endblock %}
+{% block page_title %}Dashboard Overview{% endblock %}
+
+{% block head_extra %}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+{% endblock %}
+
+{% block content %}
+    <p class="page-subtitle">
+        An interactive fleet-wide overview of your Amazon EKS clusters.
+    </p>
+
+    {% if errors %}
+        <div class="error-message-box">
+            <strong>Data Fetching Errors:</strong>
+            <ul>
+                {% for error_msg in errors %}
+                    <li>{{ error_msg }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+    {% endif %}
+
+    <h3 class="section-title">Fleet Summary</h3>
+    <div class="quick-info-grid">
+         <div class="info-box"><div class="icon-bg"><i data-feather="server"></i></div><div><div class="value count-up" data-target="{{ quick_info.total_clusters | default(0) }}">0</div><div class="label">Total Clusters</div></div></div>
+         <div class="info-box"><div class="icon-bg"><i data-feather="activity"></i></div><div><div class="value count-up" data-target="{{ quick_info.clusters_with_health_issues | default(0) }}">0</div><div class="label">With Health Issues</div></div></div>
+         <div class="info-box"><div class="icon-bg"><i data-feather="tool"></i></div><div><div class="value count-up" data-target="{{ quick_info.clusters_with_upgrade_insights_attention | default(0) }}">0</div><div class="label">Upgrade Attention</div></div></div>
+         <div class="info-box"><div class="icon-bg"><i data-feather="calendar"></i></div><div><div class="value count-up" data-target="{{ quick_info.clusters_nearing_eol_90_days | default(0) }}">0</div><div class="label">Nearing EOL (90d)</div></div></div>
+         <div class="info-box"><div class="icon-bg"><i data-feather="briefcase"></i></div><div><div class="value count-up" data-target="{{ quick_info.accounts_running_kubernetes_clusters | default(0) }}">0</div><div class="label">Active Accounts</div></div></div>
+    </div>
+
+    <div class="widget-grid-dynamic">
+        <div class="widget">
+            <div class="widget-header">
+                <h2><i data-feather="briefcase"></i>Clusters by Account</h2>
+            </div>
+            <div class="widget-content"><div class="chart-container"><canvas id="accountChart"></canvas></div></div>
+        </div>
+        <div class="widget">
+            <div class="widget-header">
+                <h2><i data-feather="globe"></i>Clusters by Region</h2>
+            </div>
+            <div class="widget-content"><div class="chart-container"><canvas id="regionChart"></canvas></div></div>
+        </div>
+        <div class="widget"><div class="widget-header"><h2><i data-feather="git-commit"></i>Clusters by Kubernetes Version</h2></div><div class="widget-content"><div class="chart-container"><canvas id="versionChart"></canvas></div></div></div>
+        <div class="widget"><div class="widget-header"><h2><i data-feather="heart"></i>Cluster Health Status</h2></div><div class="widget-content"><div class="chart-container"><canvas id="healthStatusChart"></canvas></div></div></div>
+        <div class="widget"><div class="widget-header"><h2><i data-feather="shield"></i>Access Configuration</h2></div><div class="widget-content"><div class="chart-container"><canvas id="accessConfigChart"></canvas></div></div></div>
+    </div>
+{% endblock %}
+
+{% block scripts_extra %}
+    <script>
+        const allClusters = {{ clusters | tojson | safe if clusters else [] }};
+        let charts = {};
+
+        function renderChart(canvasId, type, data) {
+            const widgetContent = document.getElementById(canvasId).closest('.widget-content');
+            if (charts[canvasId]) charts[canvasId].destroy();
+            const labels = Object.keys(data).sort();
+            const values = labels.map(label => data[label]);
+
+            if (values.length === 0) {
+                 widgetContent.innerHTML = `<div class="chart-container"><canvas id="${canvasId}"></canvas><p class="text-muted" style="text-align:center; padding: 4rem 0;">No data to display.</p></div>`;
+                 return;
+            }
+
+            const newCtx = document.getElementById(canvasId).getContext('2d');
+            const chartColors = ['#0D6EFD', '#6f42c1', '#198754', '#fd7e14', '#ffc107', '#0dcaf0', '#d63384'];
+            const healthStatusColors = {'HEALTHY': '#198754', 'HAS_ISSUES': '#FFC107', 'UNKNOWN': '#ADB5BD'};
+            let datasetOptions = type === 'bar' ? { backgroundColor: chartColors[0] } : { backgroundColor: canvasId === 'healthStatusChart' ? labels.map(l => healthStatusColors[l] || '#6C757D') : chartColors, borderColor: 'var(--surface-color)', borderWidth: 3 };
+            const baseOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: type === 'doughnut', position: 'right', labels: { color: 'var(--text-secondary)' } }, tooltip: { backgroundColor: 'var(--text-primary)', titleColor: 'var(--text-secondary)', bodyColor: 'var(--text-primary)', bodyFont: { weight: 'bold' }, borderColor: 'var(--border-color)', borderWidth: 1 }}};
+            const barOptions = { ...baseOptions, scales: { x: { ticks: { color: 'var(--text-secondary)' }, grid: { display: false } }, y: { ticks: { color: 'var(--text-secondary)', precision: 0 }, grid: { color: 'var(--border-color)' } } }};
+            charts[canvasId] = new Chart(newCtx, { type: type, data: { labels: labels, datasets: [{ label: 'Clusters', data: values, ...datasetOptions }] }, options: type === 'bar' ? barOptions : baseOptions });
+        }
+
+        function updateAllCharts(data) {
+            const accountCounts = data.reduce((acc, c) => { acc[c.account_id] = (acc[c.account_id] || 0) + 1; return acc; }, {});
+            const regionCounts = data.reduce((acc, c) => { acc[c.region] = (acc[c.region] || 0) + 1; return acc; }, {});
+            const versionCounts = data.reduce((acc, c) => { acc[c.version] = (acc[c.version] || 0) + 1; return acc; }, {});
+            const healthCounts = data.reduce((acc, c) => { acc[c.health_status_summary] = (acc[c.health_status_summary] || 0) + 1; return acc; }, {});
+            const accessConfigCounts = data.reduce((acc, c) => { acc[c.access_config_summary] = (acc[c.access_config_summary] || 0) + 1; return acc; }, {});
+            renderChart('accountChart', 'bar', accountCounts);
+            renderChart('regionChart', 'bar', regionCounts);
+            renderChart('versionChart', 'bar', versionCounts);
+            renderChart('healthStatusChart', 'doughnut', healthCounts);
+            renderChart('accessConfigChart', 'doughnut', accessConfigCounts);
+        }
+
+        function animateCounters() {
+            document.querySelectorAll('.count-up').forEach(el => {
+                const target = +el.getAttribute('data-target');
+                let count = 0;
+                const increment = target / 60;
+
+                const updateCount = () => {
+                    count += increment;
+                    if (count < target) {
+                        el.innerText = Math.ceil(count);
+                        requestAnimationFrame(updateCount);
+                    } else {
+                        el.innerText = target;
+                    }
+                };
+
+                updateCount();
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            updateAllCharts(allClusters);
+            animateCounters();
+        });
+    </script>
+{% endblock %}

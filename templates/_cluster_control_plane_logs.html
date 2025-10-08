@@ -1,0 +1,415 @@
+<!-- Control Plane Logs Tab -->
+<div id="control-plane-logs" class="tab-content">
+    <style>
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        #control-plane-logs.fade-in {
+            animation: fadeIn 0.3s ease-in-out;
+        }
+        
+        /* Control Plane Logs Styles */
+        .control-plane-logs-container {
+            background: var(--surface-color);
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .logs-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .logs-header h4 {
+            margin: 0;
+            color: var(--text-primary);
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+        
+        
+        .logs-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }
+        
+        .log-metric-card {
+            background: var(--bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            padding: 1.5rem;
+            position: relative;
+        }
+        
+        .log-metric-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        
+        .log-metric-header h5 {
+            margin: 0;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+            font-weight: 600;
+        }
+        
+        .log-metric-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+        
+        .info-icon, .more-icon {
+            width: 16px;
+            height: 16px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            position: relative;
+        }
+        
+        .info-icon:hover, .more-icon:hover {
+            color: var(--text-primary);
+        }
+        
+        .tooltip {
+            position: relative;
+            display: inline-block;
+        }
+        
+        .tooltip .tooltiptext {
+            visibility: hidden;
+            width: 200px;
+            background-color: var(--text-primary);
+            color: var(--bg-color);
+            text-align: center;
+            border-radius: 4px;
+            padding: 8px;
+            position: absolute;
+            z-index: 1000;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -100px;
+            font-size: 0.8rem;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        
+        .tooltip .tooltiptext::after {
+            content: "";
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            margin-left: -5px;
+            border-width: 5px;
+            border-style: solid;
+            border-color: var(--text-primary) transparent transparent transparent;
+        }
+        
+        .tooltip:hover .tooltiptext {
+            visibility: visible;
+            opacity: 1;
+        }
+        
+        
+        .log-metric-chart {
+            height: 150px;
+            margin-bottom: 0.5rem;
+        }
+        
+        .log-metric-legend {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            font-family: monospace;
+        }
+        
+        .logs-loading, .logs-error {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-secondary);
+        }
+        
+        .loading-spinner {
+            width: 24px;
+            height: 24px;
+            border: 2px solid var(--border-color);
+            border-top: 2px solid var(--primary-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .logs-error {
+            color: var(--status-failed);
+        }
+    </style>
+
+    <h3 class="section-title">Control Plane Monitoring</h3>
+    <div class="control-plane-logs-container">
+        <div class="logs-header">
+            <h4>API Server Request Metrics</h4>
+        </div>
+        
+        <div class="logs-grid">
+            <div class="log-metric-card">
+                <div class="log-metric-header">
+                    <h5>Requests</h5>
+                    <div class="log-metric-actions">
+                        <div class="tooltip">
+                            <i data-feather="info" class="info-icon"></i>
+                            <span class="tooltiptext">The number of HTTP requests made across all the API servers in the cluster.</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="log-metric-chart">
+                    <canvas id="requestsChartTab"></canvas>
+                </div>
+                <div class="log-metric-legend">apiserver_request_total</div>
+            </div>
+            
+            <div class="log-metric-card">
+                <div class="log-metric-header">
+                    <h5>Requests HTTP 4XX</h5>
+                    <div class="log-metric-actions">
+                        <div class="tooltip">
+                            <i data-feather="info" class="info-icon"></i>
+                            <span class="tooltiptext">The number of HTTP requests made to all the API servers in the cluster that resulted in 4XX (client error) status codes.</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="log-metric-chart">
+                    <canvas id="requests4XXChartTab"></canvas>
+                </div>
+                <div class="log-metric-legend">apiserver_request_total_4XX</div>
+            </div>
+            
+            <div class="log-metric-card">
+                <div class="log-metric-header">
+                    <h5>Requests HTTP 5XX</h5>
+                    <div class="log-metric-actions">
+                        <div class="tooltip">
+                            <i data-feather="info" class="info-icon"></i>
+                            <span class="tooltiptext">The number of HTTP requests made to all the API servers in the cluster that resulted in 5XX (server error) status codes.</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="log-metric-chart">
+                    <canvas id="requests5XXChartTab"></canvas>
+                </div>
+                <div class="log-metric-legend">apiserver_request_total_5XX</div>
+            </div>
+            
+            <div class="log-metric-card">
+                <div class="log-metric-header">
+                    <h5>Requests HTTP 429</h5>
+                    <div class="log-metric-actions">
+                        <div class="tooltip">
+                            <i data-feather="info" class="info-icon"></i>
+                            <span class="tooltiptext">The number of HTTP requests made to all the API servers in the cluster lat resulted in 429 status code, which occurs when clients exceed the rate limiting thresholds.</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="log-metric-chart">
+                    <canvas id="requests429ChartTab"></canvas>
+                </div>
+                <div class="log-metric-legend">apiserver_request_total_429</div>
+            </div>
+            
+            <div class="log-metric-card">
+                <div class="log-metric-header">
+                    <h5>Storage Size Bytes</h5>
+                    <div class="log-metric-actions">
+                        <div class="tooltip">
+                            <i data-feather="info" class="info-icon"></i>
+                            <span class="tooltiptext">The physical size in bytes of the etcd storage database file used by the API servers in the cluster. This metric represents the actual disk space allocated for the storage.</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="log-metric-chart">
+                    <canvas id="storageSizeChartTab"></canvas>
+                </div>
+                <div class="log-metric-legend">apiserver_storage_size_bytes</div>
+            </div>
+            
+        </div>
+        
+        <div class="logs-loading" id="controlPlaneLogsLoadingTab" style="display: none;">
+            <div class="loading-spinner"></div>
+            <p>Loading control plane logs...</p>
+        </div>
+        
+        <div class="logs-error" id="controlPlaneLogsErrorTab" style="display: none;">
+            <p>Failed to load control plane logs. Please try again.</p>
+        </div>
+    </div>
+</div>
+
+<script>
+    let controlPlaneLogsCharts = {};
+    
+    window.addEventListener('load', () => {
+        const tab = document.getElementById('control-plane-logs');
+        if (tab) {
+            tab.classList.add('fade-in');
+        }
+        initializeControlPlaneLogs();
+    });
+    
+    function initializeControlPlaneLogs() {
+        // Load initial data
+        loadControlPlaneLogs();
+    }
+    
+    async function loadControlPlaneLogs() {
+        const loadingEl = document.getElementById('controlPlaneLogsLoadingTab');
+        const errorEl = document.getElementById('controlPlaneLogsErrorTab');
+        const logsContainer = document.querySelector('.control-plane-logs-container');
+        
+        // Show loading state
+        loadingEl.style.display = 'block';
+        errorEl.style.display = 'none';
+        logsContainer.style.display = 'none';
+        
+        try {
+            const response = await fetch(`/api/control-plane-logs/{{ cluster.account_id }}/{{ cluster.region }}/{{ cluster.name }}`);
+            const data = await response.json();
+            
+            if (data.error) {
+                throw new Error(data.error);
+            }
+            
+            // Hide loading, show data
+            loadingEl.style.display = 'none';
+            logsContainer.style.display = 'block';
+            
+            // Update charts
+            updateControlPlaneLogsCharts(data);
+            
+        } catch (error) {
+            console.error('Error loading control plane logs:', error);
+            loadingEl.style.display = 'none';
+            errorEl.style.display = 'block';
+        }
+    }
+    
+    function updateControlPlaneLogsCharts(data) {
+        // Update Requests chart
+        updateLogChart('requestsChartTab', data.apiserver_request_total, 'Requests');
+        
+        // Update 4XX Requests chart
+        updateLogChart('requests4XXChartTab', data.apiserver_request_total_4XX, '4XX Requests');
+        
+        // Update 5XX Requests chart
+        updateLogChart('requests5XXChartTab', data.apiserver_request_total_5XX, '5XX Requests');
+        
+        // Update 429 Requests chart
+        updateLogChart('requests429ChartTab', data.apiserver_request_total_429, '429 Requests');
+        
+        // Update Storage Size chart
+        updateLogChart('storageSizeChartTab', data.apiserver_storage_size_bytes, 'Storage Size Bytes');
+        
+    }
+    
+    function updateLogChart(canvasId, metricData, title) {
+        if (!metricData || !metricData.values || metricData.values.length === 0) {
+            return;
+        }
+        
+        // Get or create chart
+        const canvas = document.getElementById(canvasId);
+        const ctx = canvas.getContext('2d');
+        
+        // Destroy existing chart if it exists
+        if (controlPlaneLogsCharts[canvasId]) {
+            controlPlaneLogsCharts[canvasId].destroy();
+        }
+        
+        // Prepare data
+        const timestamps = metricData.timestamps.map(ts => new Date(ts));
+        const values = metricData.values;
+        
+        // Create new chart
+        controlPlaneLogsCharts[canvasId] = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: timestamps,
+                datasets: [{
+                    label: title,
+                    data: values,
+                    borderColor: '#0D6EFD',
+                    backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.1,
+                    pointRadius: 0,
+                    pointHoverRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            displayFormats: {
+                                hour: 'HH:mm'
+                            }
+                        },
+                        grid: {
+                            display: false
+                        },
+                        ticks: {
+                            maxTicksLimit: 6
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        grid: {
+                            color: 'rgba(0, 0, 0, 0.1)'
+                        },
+                        ticks: {
+                            callback: function(value) {
+                                return formatValue(value);
+                            }
+                        }
+                    }
+                },
+                interaction: {
+                    intersect: false,
+                    mode: 'index'
+                }
+            }
+        });
+    }
+    
+    function formatValue(value) {
+        if (value >= 1000000) {
+            return (value / 1000000).toFixed(1) + 'M';
+        } else if (value >= 1000) {
+            return (value / 1000).toFixed(1) + 'k';
+        } else if (value < 1 && value > 0) {
+            return value.toFixed(3);
+        } else {
+            return Math.round(value).toString();
+        }
+    }
+</script>

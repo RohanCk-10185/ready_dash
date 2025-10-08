@@ -1,0 +1,162 @@
+<div id="resources" class="tab-content" style="display: none;">
+    <style>
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        #resources.fade-in {
+            animation: fadeIn 0.3s ease-in-out;
+        }
+        .form-input { padding: 0.5rem 0.75rem; font-size: 0.875rem; border: 1px solid #d1d5db; border-radius: 0.375rem; outline: none; background-color: #ffffff; color: #111827; transition: border-color 0.2s, box-shadow 0.2s; min-width: 200px; }
+        .form-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2); }
+        .form-input::placeholder { color: #9ca3af; }
+        .resource-filters { display: flex; gap: 0.75rem; align-items: center; }
+        .input-wrapper { position: relative; display: flex; align-items: center; }
+        .with-icon { padding-left: 2rem; }
+        .input-icon { position: absolute; left: 0.75rem; font-size: 0.875rem; color: #9ca3af; pointer-events: none; }
+    </style>
+
+    <!-- UPDATED: Skeleton loader for the resources tab -->
+    <div id="resources-loading-state" class="skeleton-wrapper" style="display: none;">
+        <div class="resources-container">
+            <div class="resource-types-pane">
+                {% for i in range(3) %}
+                <div style="margin-bottom: 2rem;">
+                    <div class="skeleton skeleton-text" style="width: 60%; height: 12px; margin-bottom: 1rem;"></div>
+                    <div class="skeleton skeleton-text" style="width: 80%; height: 24px; margin-bottom: 0.5rem; border-radius: 4px;"></div>
+                    <div class="skeleton skeleton-text" style="width: 70%; height: 24px; margin-bottom: 0.5rem; border-radius: 4px;"></div>
+                    <div class="skeleton skeleton-text" style="width: 75%; height: 24px; margin-bottom: 0.5rem; border-radius: 4px;"></div>
+                </div>
+                {% endfor %}
+            </div>
+            <div class="resource-details-pane">
+                <div class="resource-table-header">
+                    <div class="skeleton skeleton-text" style="width: 150px; height: 28px;"></div>
+                    <div class="resource-filters">
+                        <div class="skeleton" style="width: 180px; height: 38px;"></div>
+                        <div class="skeleton" style="width: 200px; height: 38px;"></div>
+                    </div>
+                </div>
+                <div class="table-container" style="border: none;">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th><div class="skeleton skeleton-text" style="width: 100%;"></div></th>
+                                <th><div class="skeleton skeleton-text" style="width: 100%;"></div></th>
+                                <th><div class="skeleton skeleton-text" style="width: 100%;"></div></th>
+                                <th><div class="skeleton skeleton-text" style="width: 100%;"></div></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for i in range(8) %}
+                            <tr>
+                                <td><div class="skeleton skeleton-text"></div></td>
+                                <td><div class="skeleton skeleton-text"></div></td>
+                                <td><div class="skeleton skeleton-text"></div></td>
+                                <td><div class="skeleton skeleton-text"></div></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="resources-error-state" class="no-data-message" style="display: none;">
+        <strong>Could not load workload data.</strong>
+        <p id="resources-error-reason"></p>
+    </div>
+
+    <!-- The actual content, initially hidden, shown by JS after data loads -->
+    <div id="resources-container" class="resources-container" style="display:none;">
+        <!-- Left Pane: Resource Types -->
+        <div class="resource-types-pane">
+            <nav class="resource-nav">
+                <div class="resource-nav-group">
+                    <div class="resource-nav-header">Workloads</div>
+                    <ul>
+                        <li><a href="#" class="resource-nav-link active" data-resource="pod">Pods</a></li>
+                        <li><a href="#" class="resource-nav-link" data-resource="deployment">Deployments</a></li>
+                        <li><a href="#" class="resource-nav-link" data-resource="replica_set">ReplicaSets</a></li>
+                        <li><a href="#" class="resource-nav-link" data-resource="daemon_set">DaemonSets</a></li>
+                        <li><a href="#" class="resource-nav-link" data-resource="stateful_set">StatefulSets</a></li>
+                        <li><a href="#" class="resource-nav-link" data-resource="job">Jobs</a></li>
+                        <li><a href="#" class="resource-nav-link" data-resource="cron_job">CronJobs</a></li>
+                        <li><a href="#" class="resource-nav-link" data-resource="hpa">HorizontalPodAutoscalers</a></li>
+                        <li><a href="#" class="resource-nav-link" data-resource="priority_class">PriorityClasses</a></li>
+                    </ul>
+                </div>
+                <div class="resource-nav-group">
+                    <div class="resource-nav-header">Cluster</div>
+                    <ul>
+                        <li><a href="#" class="resource-nav-link" data-resource="node">Nodes</a></li>
+                    </ul>
+                </div>
+                <div class="resource-nav-group">
+                    <div class="resource-nav-header">Service & Networking</div>
+                    <ul>
+                        <li><a href="#" class="resource-nav-link" data-resource="service">Services</a></li>
+                        <li><a href="#" class="resource-nav-link" data-resource="endpoint">Endpoints</a></li>
+                        <li><a href="#" class="resource-nav-link" data-resource="ingress">Ingresses</a></li>
+                    </ul>
+                </div>
+                <div class="resource-nav-group">
+                    <div class="resource-nav-header">Config and Secrets</div>
+                    <ul>
+                        <li><a href="#" class="resource-nav-link" data-resource="config_map">ConfigMaps</a></li>
+                        <li><a href="#" class="resource-nav-link" data-resource="secret">Secrets</a></li>
+                    </ul>
+                </div>
+                <div class="resource-nav-group">
+                    <div class="resource-nav-header">Storage</div>
+                    <ul>
+                        <li><a href="#" class="resource-nav-link" data-resource="persistent_volume_claim">PersistentVolumeClaims</a></li>
+                        <li><a href="#" class="resource-nav-link" data-resource="persistent_volume">PersistentVolumes</a></li>
+                        <li><a href="#" class="resource-nav-link" data-resource="storage_class">StorageClasses</a></li>
+                        <li><a href="#" class="resource-nav-link" data-resource="csi_node">CSINodes</a></li>
+                        <li><a href="#" class="resource-nav-link" data-resource="csi_driver">CSIDrivers</a></li>
+                    </ul>
+                </div>
+            </nav>
+        </div>
+
+        <!-- Right Pane: Resource Details Table -->
+        <div class="resource-details-pane">
+            <div class="resource-table-header">
+                <h3 id="resource-title">Pods</h3>
+                <div class="resource-filters">
+                    <select id="resource-node-filter" class="form-select" style="display: none;"></select>
+                    <select id="resource-namespace-filter" class="form-select"></select>
+                    <div class="input-wrapper">
+                        <input type="text" id="resource-name-filter" class="form-input with-icon" placeholder="Filter by name">
+                    </div>
+                </div>
+            </div>
+            <div class="table-container">
+                <table class="data-table">
+                    <thead id="resource-table-head"></thead>
+                    <tbody id="resource-table-body"></tbody>
+                </table>
+            </div>
+            <div id="pagination-controls" class="pagination-controls" style="display: none;">
+                <button id="pagination-prev" class="action-btn">Previous</button>
+                <span id="pagination-info" class="text-muted"></span>
+                <button id="pagination-next" class="action-btn">Next</button>
+            </div>
+            <div id="resource-table-empty" class="no-data-message" style="display: none; padding: 4rem;">
+                <p>No resources found.</p>
+                <p class="text-muted">This cluster does not have any matching resources for the selected type.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    window.addEventListener('load', () => {
+        const tab = document.getElementById('resources');
+        if (tab) {
+            tab.classList.add('fade-in');
+        }
+    });
+</script>
