@@ -2,7 +2,7 @@ import os
 import json
 import re
 from datetime import datetime
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, JSON, ForeignKey, Boolean, Text, MetaData, Table
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, JSON, ForeignKey, Boolean, Text, MetaData, Table, UniqueConstraint
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.sql import text
@@ -17,7 +17,7 @@ Base = declarative_base()
 class ClusterRegistry(Base):
     __tablename__ = "cluster_registry"
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, unique=True, index=True, nullable=False)
+    name = Column(String, index=True, nullable=False)
     account_id = Column(String, index=True, nullable=False)
     region = Column(String, index=True, nullable=False)
     arn = Column(String, unique=True)
@@ -37,6 +37,11 @@ class ClusterRegistry(Base):
     workloads = Column(JSON)
     last_updated = Column(DateTime, default=datetime.utcnow)
     table_name = Column(String, unique=True, nullable=False)  # Name of the cluster's dedicated table
+    
+    # Composite unique constraint: same cluster name can exist in different regions/accounts
+    __table_args__ = (
+        UniqueConstraint('name', 'account_id', 'region', name='uq_cluster_name_account_region'),
+    )
 
 # --- Per-Cluster Table Models (dynamically created) ---
 def create_cluster_table_name(account_id: str, region: str, cluster_name: str) -> str:
@@ -113,12 +118,6 @@ def drop_cluster_tables(account_id: str, region: str, cluster_name: str):
                 print(f"Warning: Could not drop table {table_name}{suffix}: {e}")
         conn.commit()
 
-class DataUpdateLog(Base):
-    __tablename__ = "data_update_logs"
-    id = Column(Integer, primary_key=True, index=True)
-    timestamp = Column(DateTime, default=datetime.utcnow)
-    status = Column(String)
-    details = Column(Text)
 
 
 # --- DB Setup & Utils ---
@@ -130,9 +129,6 @@ def get_db():
     try: yield db
     finally: db.close()
 
-def get_last_update_time(session: Session):
-    last_success = session.query(DataUpdateLog).filter(DataUpdateLog.status == 'SUCCESS').order_by(DataUpdateLog.timestamp.desc()).first()
-    return last_success.timestamp if last_success else None
 
 def get_cluster_table_name(session: Session, account_id: str, region: str, cluster_name: str) -> str:
     """Get the table name for a cluster from the registry"""
@@ -421,3 +417,4 @@ def delete_cluster(session: Session, account_id: str, region: str, cluster_name:
         session.commit()
         return True
     return False
+

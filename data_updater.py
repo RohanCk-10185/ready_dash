@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 
 # FIX: Import the 'ClusterRegistry' model directly to use it for queries.
-from database import SessionLocal, DataUpdateLog, update_cluster_data, get_all_clusters_summary, ClusterRegistry, delete_cluster
+from database import SessionLocal, update_cluster_data, get_all_clusters_summary, ClusterRegistry, delete_cluster
 from aws_data_fetcher import get_live_eks_data, get_single_cluster_details, get_role_arn_for_account
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -58,16 +58,9 @@ async def update_all_data():
 
         details_message = f"Update complete. Success: {success_count}, Failed: {fail_count}, Deleted: {len(clusters_to_delete)}."
         logging.info(details_message)
-        
-        log_entry = DataUpdateLog(status='SUCCESS', details=details_message)
-        db_session.add(log_entry)
-        db_session.commit()
 
     except Exception as e:
         logging.error(f"Fatal error during background data update: {e}", exc_info=True)
-        log_entry = DataUpdateLog(status='FAIL', details=str(e))
-        db_session.add(log_entry)
-        db_session.commit()
     finally:
         db_session.close()
 

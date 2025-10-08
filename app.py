@@ -72,7 +72,6 @@ database.create_db_and_tables()
 async def db_session_middleware(request: Request, call_next):
     request.state.db = database.SessionLocal()
     try:
-        request.state.last_update_time = database.get_last_update_time(request.state.db)
         response = await call_next(request)
         return response
     finally:

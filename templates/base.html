@@ -198,7 +198,7 @@
                 });
             }
 
-            const lastRefreshedTimeIso = "{{ request.state.last_update_time.isoformat() if request.state.last_update_time else '' }}";
+            const lastRefreshedTimeIso = "";
             const lastRefreshedSpan = document.getElementById('last-refreshed-time');
 
             if (lastRefreshedSpan && lastRefreshedTimeIso) {
