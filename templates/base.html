@@ -130,10 +130,12 @@
             <header class="main-header">
                 <h1 class="page-title">{% block page_title %}Dashboard Overview{% endblock %}</h1>
                 <div class="header-actions">
+                    {% if not request.url.path.startswith('/clusters/') or request.url.path == '/clusters' %}
                     <span id="last-refreshed-time" class="last-refreshed"></span>
                     <button id="refresh-data-btn" class="action-btn" title="Refresh All Data">
                      <i data-feather="refresh-cw"></i>
                     </button>
+                    {% endif %}
                     <!-- User menu is now conditional -->
                     {% if request.state.user %}
                     <div class="user-menu">
@@ -183,6 +185,10 @@
                             globalLoaderText.textContent = result.message;
                             setTimeout(hideGlobalLoader, 2500);
                         } else if (response.ok) {
+                            // Save the refresh completion time
+                            const refreshTime = new Date().toISOString();
+                            localStorage.setItem('lastGlobalRefresh', refreshTime);
+                            
                             globalLoaderText.textContent = 'Sync complete! Reloading page...';
                             globalLoaderText.classList.add('success-message');
                             setTimeout(() => window.location.reload(), 1500);
@@ -198,15 +204,19 @@
                 });
             }
 
-            const lastRefreshedTimeIso = "";
             const lastRefreshedSpan = document.getElementById('last-refreshed-time');
-
-            if (lastRefreshedSpan && lastRefreshedTimeIso) {
-                const lastRefreshedTime = new Date(lastRefreshedTimeIso + 'Z');
-                lastRefreshedSpan.textContent = `Last Updated: ${lastRefreshedTime.toLocaleTimeString()}`;
-                lastRefreshedSpan.title = `Data loaded at ${lastRefreshedTime.toISOString()}`;
-            } else if (lastRefreshedSpan) {
-                lastRefreshedSpan.textContent = `Last Updated: Syncing...`;
+            
+            // Load last refresh time from localStorage or show default (only if element exists)
+            if (lastRefreshedSpan) {
+                const lastRefreshTime = localStorage.getItem('lastGlobalRefresh');
+                if (lastRefreshTime) {
+                    const refreshDate = new Date(lastRefreshTime);
+                    lastRefreshedSpan.textContent = `Last Updated: ${refreshDate.toLocaleTimeString()}`;
+                    lastRefreshedSpan.title = `Last global refresh at ${refreshDate.toISOString()}`;
+                } else {
+                    lastRefreshedSpan.textContent = `Last Updated: Never`;
+                    lastRefreshedSpan.title = `No global refresh performed yet`;
+                }
             }
 
             const currentPath = window.location.pathname;

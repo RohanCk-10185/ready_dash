@@ -143,15 +143,13 @@ async def refresh_data(request: Request):
 
 @app.post("/api/refresh-cluster/{account_id}/{region}/{cluster_name}")
 async def refresh_cluster(account_id: str, region: str, cluster_name: str):
-    # This endpoint now works correctly by calling the single-cluster update function
-    db_session = database.SessionLocal()
+    """Refresh data for a single cluster"""
     try:
-        asyncio.create_task(update_single_cluster_data(db_session, account_id, region, cluster_name))
+        # Create a new session for the background task
+        asyncio.create_task(update_single_cluster_data(None, account_id, region, cluster_name))
         return JSONResponse(content={"status": "success", "message": f"Refresh triggered for cluster {cluster_name}."})
-    finally:
-        # The task will run in the background, but we need to close the session we created here.
-        # The task itself will manage its own session.
-        pass # The task will close its own session
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"status": "error", "message": f"Failed to trigger refresh: {str(e)}"})
 
 @app.post("/api/upgrade-nodegroup")
 async def upgrade_nodegroup_api(request: Request):

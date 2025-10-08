@@ -65,8 +65,14 @@ async def update_all_data():
         db_session.close()
 
 async def update_single_cluster_data(db_session: Session, account_id: str, region: str, cluster_name: str):
-    """Fetches and updates data for a single cluster. Manages its own session."""
-    logging.info(f"Updating details for cluster: {cluster_name} in {region}")
+    """Fetches and updates data for a single cluster. Manages its own session if none provided."""
+    logging.info(f"Updating details for cluster ====== ===== : {cluster_name} in {region}")
+    
+    # Create session if none provided (for individual cluster refresh)
+    session_provided = db_session is not None
+    if not session_provided:
+        db_session = SessionLocal()
+    
     try:
         role_arn = get_role_arn_for_account(account_id)
         detailed_data = get_single_cluster_details(account_id, region, cluster_name, role_arn)
@@ -82,3 +88,7 @@ async def update_single_cluster_data(db_session: Session, account_id: str, regio
         logging.error(f"Could not update cluster {cluster_name}: {e}", exc_info=False)
         # Re-raise the exception so asyncio.gather can capture it as a failure
         raise
+    finally:
+        # Only close session if we created it
+        if not session_provided:
+            db_session.close()
