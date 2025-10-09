@@ -72,6 +72,12 @@
             margin: 0;
         }
         
+        .cluster-header-actions {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        
         .cluster-refresh-btn-detail {
             background: var(--surface-color);
             border: 1px solid var(--border-color);
@@ -152,11 +158,14 @@
     <a href="{{ url_for('list_clusters') }}" class="back-link"><iLast data-feather="arrow-left"></iLast> Back to Clusters</a>
     <div class="cluster-header">
         <h2 class="cluster-detail-title">{{ cluster.name or "Unknown Cluster" }}</h2>
-        <button id="cluster-refresh-btn" class="cluster-refresh-btn-detail" 
-                onclick="refreshSingleClusterDetail('{{ cluster.account_id }}', '{{ cluster.region }}', '{{ cluster.name }}')"
-                title="Refresh {{ cluster.name }} data">
-            <i data-feather="refresh-cw"></i>
-        </button>
+        <div class="cluster-header-actions">
+            <span id="last-refreshed-time" class="last-refreshed"></span>
+            <button id="cluster-refresh-btn" class="cluster-refresh-btn-detail" 
+                    onclick="refreshSingleClusterDetail('{{ cluster.account_id }}', '{{ cluster.region }}', '{{ cluster.name }}')"
+                    title="Refresh {{ cluster.name }} data">
+                <i data-feather="refresh-cw"></i>
+            </button>
+        </div>
     </div>
 
     {% if cluster.errors %}
@@ -966,6 +975,21 @@
         document.getElementById('overview').style.display = 'block';
         feather.replace();
 
+        // Load and display last refresh time for this specific cluster
+        const lastRefreshedSpan = document.getElementById('last-refreshed-time');
+        if (lastRefreshedSpan) {
+            const clusterKey = `lastClusterRefresh_${CLUSTER_INFO.accountId}_${CLUSTER_INFO.region}_${CLUSTER_INFO.name}`;
+            const lastRefreshTime = localStorage.getItem(clusterKey);
+            if (lastRefreshTime) {
+                const refreshDate = new Date(lastRefreshTime);
+                lastRefreshedSpan.textContent = `Last Updated: ${refreshDate.toLocaleTimeString()}`;
+                lastRefreshedSpan.title = `Last cluster refresh at ${refreshDate.toISOString()}`;
+            } else {
+                lastRefreshedSpan.textContent = `Last Updated: Never`;
+                lastRefreshedSpan.title = `No cluster refresh performed yet`;
+            }
+        }
+
         const modal = document.getElementById('resource-modal');
         if (modal) {
             document.getElementById('modal-close-btn').addEventListener('click', () => modal.classList.remove('visible'));
@@ -1013,6 +1037,10 @@
             const result = await response.json();
             
             if (response.ok) {
+                // Save the refresh completion time
+                const refreshTime = new Date().toISOString();
+                localStorage.setItem(`lastClusterRefresh_${accountId}_${region}_${clusterName}`, refreshTime);
+                
                 // Success - show success message and reload page after a delay
                 button.classList.remove('refreshing');
                 button.classList.add('success');
@@ -1051,3 +1079,4 @@
     }
 </script>
 {% endblock %}
+
