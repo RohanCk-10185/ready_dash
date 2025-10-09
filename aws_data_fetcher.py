@@ -673,7 +673,7 @@ def get_security_insights(cluster_raw, eks_client):
         "description": "Shows the cluster's API server endpoint access configuration."
     }
     # Control plane logging status sourced exactly from DescribeCluster.logging.clusterLogging
-    all_logs = ['api', 'audit', 'authenticator', 'controllerManager', 'scheduler']
+    all_logs = ['API Server', 'Audit', 'Authenticator', 'Controller Manager', 'Scheduler']
     enabled_logs_set = set()
     try:
         for item in cluster_raw.get('logging', {}).get('clusterLogging', []) or []:
