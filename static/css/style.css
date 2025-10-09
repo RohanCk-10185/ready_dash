@@ -355,7 +355,7 @@ padding: 0 2rem 1.5rem 2rem;
 .status-badge.status-updating, .status-badge.status-pending, .health-badge.health-has_issues, .insight-badge.insight-needs-attention {
     background-color: #fff3cd; color: #664d03;
 }
-.status-badge.status-deleting, .status-badge.status-failed, .status-badge.status-disabled, .status-badge.status-error_describing, .health-badge.health-degraded, .insight-badge.insight-error {
+.status-badge.status-deleting, .status-badge.status-failed, .status-badge.status-error_describing, .health-badge.health-degraded, .insight-badge.insight-error {
     background-color: #f8d7da; color: #58151c;
 }
 .status-badge.status-creating, .insight-badge.insight-in-progress {
@@ -379,10 +379,10 @@ padding: 0 2rem 1.5rem 2rem;
 
 /* EKS Auto Mode Status Colors */
 .status-badge.status-eks-auto-enabled {
-    background-color: #d1e7dd; color: #0f5132; /* Green for Enabled */
+    background-color: #d1e7dd !important; color: #0f5132 !important; /* Green for Enabled */
 }
 .status-badge.status-eks-auto-disabled {
-    background-color: #f8d7da; color: #661018; /* Light red for Disabled */
+    background-color: #f8d7da !important; color: #661018 !important; /* Light red for Disabled */
 }
 
 /* --- Cluster Detail Page --- */
