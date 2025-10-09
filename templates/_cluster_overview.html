@@ -44,7 +44,7 @@
             <div class="widget-content">
                 <div class="info-grid">
                     <strong>Status</strong>
-                    <span class="status-badge status-{{ 'active' if cluster.eks_auto_mode == 'Enabled' else 'disabled' }}">{{ cluster.eks_auto_mode }}</span>
+                    <span class="status-badge status-{{ 'active' if cluster.eks_auto_mode == 'Enabled' else 'disabled' }}" {% if cluster.eks_auto_mode != 'Enabled' %}style="background-color: #f67f89; color: #58151c;"{% endif %}>{{ cluster.eks_auto_mode }}</span>
                     <strong style="grid-column: 1 / -1; margin-top: 1rem; color: var(--text-secondary); font-weight: 400; font-size: .9rem;">
                         EKS automates routine cluster tasks for compute, storage, and networking to meet application compute needs.
                     </strong>
@@ -120,3 +120,4 @@
         }
     });
 </script>
+

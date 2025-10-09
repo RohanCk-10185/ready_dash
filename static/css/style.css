@@ -13,7 +13,7 @@
     --status-updating: #FFC107; /* Amber */
     --status-deleting: #DC3545; /* Rose */
     --status-creating: #6F42C1; /* Violet */
-    --status-failed: #DC3545; /* Red */
+    --status-failed: #f67f89; /* Red */
     --status-unknown: #6C757D; /* Slate */
     --status-pending: #FFC107; /* Amber */
     --status-running: #198754; /* Green */
@@ -364,13 +364,18 @@ padding: 0 2rem 1.5rem 2rem;
 .status-badge.status-unknown, .health-badge.health-unknown {
     background-color: #e9ecef; color: #495057;
 }
+.status-badge.status-disabled {
+    background-color: #f67f89 !important; 
+    color: #58151c !important; /* Red for Disabled */
+}
+
 
 /* Endpoint Access Status Colors */
 .status-badge.status-endpoint-private {
     background-color: #d1e7dd; color: #0f5132; /* Green for Private */
 }
 .status-badge.status-endpoint-public {
-    background-color: #f8d7da; color: #58151c; /* Red for Public */
+    background-color: #f67f89; color: #58151c; /* Red for Public */
 }
 .status-badge.status-endpoint-public-private {
     background-color: #fff3cd; color: #664d03; /* Yellow for Public & Private */
@@ -844,3 +849,4 @@ padding: 0 2rem 1.5rem 2rem;
         align-items: stretch;
     }
 }
+
