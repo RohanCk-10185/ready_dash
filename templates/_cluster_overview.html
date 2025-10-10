@@ -69,11 +69,11 @@
                     {% if public_enabled and private_enabled %}
                         <span>Public and Private</span>
                     {% elif public_enabled %}
-                        <span >Public</span>
+                        <span class="status-badge status-eks-auto-disabled">Public</span>
                     {% elif private_enabled %}
-                        <span>Private</span>
+                    <span class="status-badge status-endpoint-private">Private</span>
                     {% else %}
-                        <span >None</span>
+                        <span class="status-badge status-failed">None</span>
                     {% endif %}
                 </div>
                 <div><strong>Cluster security group:</strong> 
@@ -124,4 +124,5 @@
         }
     });
 </script>
+
 

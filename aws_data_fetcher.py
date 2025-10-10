@@ -805,16 +805,11 @@ def get_live_eks_data(user_groups: list[str] | None, group_map_str: str):
     accessible_accounts = {acc for grp in user_groups for acc in group_to_account_list.get(grp, [])} if user_groups is not None else {acc for acc_list in group_to_account_list.values() for acc in acc_list}
     all_possible_roles = [{'role_arn': r.strip(), 'id': r.strip().split(':')[4]} for r in os.getenv("AWS_TARGET_ACCOUNTS_ROLES", "").split(',') if r.strip()]
     
-    try:
-        primary_account_id = boto3.client('sts').get_caller_identity().get('Account')
-        if not any(acc['id'] == primary_account_id for acc in all_possible_roles):
-            all_possible_roles.append({'role_arn': None, 'id': primary_account_id})
-    except Exception as e:
-        logging.warning(f"Could not determine primary account ID from default credentials: {e}")
+    # Removed automatic inclusion of primary account - only scan explicitly configured accounts
 
     accounts_to_scan = [acc for acc in all_possible_roles if not accessible_accounts or acc['id'] in accessible_accounts]
-    if not accounts_to_scan and group_to_account_list:
-        return {"clusters": [], "quick_info": {}, "errors": ["User has no access to any configured AWS accounts."]}
+    if not accounts_to_scan:
+        return {"clusters": [], "quick_info": {}, "errors": ["No AWS accounts configured for scanning. Please set AWS_TARGET_ACCOUNTS_ROLES environment variable."]}
 
     # Simplified, more robust concurrent model
     all_clusters_raw, errors = [], []
@@ -913,3 +908,4 @@ def get_single_cluster_details(account_id, region, cluster_name, role_arn=None):
     except Exception as e:
         logging.error(f"Error in get_single_cluster_details for {cluster_name}: {e}", exc_info=True)
         return {"name": cluster_name, "errors": [f"Error fetching details for cluster {cluster_name}: {e}"]}
+

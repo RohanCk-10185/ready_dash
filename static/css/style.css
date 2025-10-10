@@ -367,21 +367,16 @@ padding: 0 2rem 1.5rem 2rem;
 
 
 /* Endpoint Access Status Colors */
-.status-badge.status-endpoint-private {
-    background-color: #d1e7dd; color: #0f5132; /* Green for Private */
-}
-.status-badge.status-endpoint-public {
-    background-color: #f67f89; color: #58151c; /* Red for Public */
-}
+
 .status-badge.status-endpoint-public-private {
     background-color: #fff3cd; color: #664d03; /* Yellow for Public & Private */
 }
 
 /* EKS Auto Mode Status Colors */
-.status-badge.status-eks-auto-enabled {
+.status-badge.status-eks-auto-enabled, .status-badge.status-endpoint-private {
     background-color: #d1e7dd !important; color: #0f5132 !important; /* Green for Enabled */
 }
-.status-badge.status-eks-auto-disabled {
+.status-badge.status-eks-auto-disabled, .status-badge.status-endpoint-public-only {
     background-color: #f8d7da !important; color: #661018 !important; /* Light red for Disabled */
 }
 
@@ -853,4 +848,5 @@ padding: 0 2rem 1.5rem 2rem;
         align-items: stretch;
     }
 }
+
 
