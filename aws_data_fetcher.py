@@ -85,6 +85,35 @@ def get_session(role_arn=None):
             return None
 
 
+def invalidate_session_cache(role_arn=None):
+    """
+    Invalidate cached session for a specific role or all sessions.
+    Useful when IAM roles are deleted/recreated.
+    """
+    cache_key = role_arn or "default"
+    
+    with _session_lock:
+        if cache_key in _session_cache:
+            del _session_cache[cache_key]
+            logging.info(f"[invalidate_session_cache] Invalidated session cache for {cache_key}")
+        elif role_arn is None:
+            # Clear all cached sessions
+            _session_cache.clear()
+            logging.info("[invalidate_session_cache] Cleared all session caches")
+
+
+def handle_invalid_token_error(role_arn=None, error_message=""):
+    """
+    Handle UnrecognizedClientException by invalidating the session cache
+    and forcing a new session creation.
+    """
+    if "UnrecognizedClientException" in error_message or "security token included in the request is invalid" in error_message:
+        logging.warning(f"[handle_invalid_token_error] Invalid token detected for {role_arn or 'default'}. Invalidating cache.")
+        invalidate_session_cache(role_arn)
+        return True
+    return False
+
+
 
 # --- Kubernetes Client & Helper Functions ---
 def get_k8s_api_client(cluster_name, cluster_endpoint, cluster_ca_data, region, role_arn=None):
@@ -133,14 +162,86 @@ def get_role_arn_for_account(account_id: str) -> str | None:
     target_roles_str = os.getenv("AWS_TARGET_ACCOUNTS_ROLES", "")
     if target_roles_str:
         for r_arn in target_roles_str.split(','):
-            if f":{account_id}:" in r_arn:
+            if r_arn and f":{account_id}:" in r_arn:
                 return r_arn.strip()
     return None
 
 
-def fetch_karpenter_nodes_for_cluster(core_v1_api):
+def validate_role_exists(role_arn: str) -> bool:
+    """
+    Validate if an IAM role exists by attempting to assume it.
+    Returns True if role exists and can be assumed, False otherwise.
+    """
+    if not role_arn:
+        return False
+    
+    try:
+        sts_client = boto3.client('sts')
+        # Try to assume the role with a short session name
+        sts_client.assume_role(
+            RoleArn=role_arn,
+            RoleSessionName=f"role-validation-{int(time.time())}",
+            DurationSeconds=900  # 15 minutes minimum
+        )
+        return True
+    except ClientError as e:
+        error_code = e.response.get('Error', {}).get('Code', '')
+        if error_code in ['NoSuchEntity', 'InvalidParameterValue', 'AccessDenied']:
+            logging.warning(f"[validate_role_exists] Role {role_arn} does not exist or cannot be assumed: {e}")
+            return False
+        else:
+            # Other errors might be temporary, so we assume the role exists
+            logging.warning(f"[validate_role_exists] Unexpected error validating role {role_arn}: {e}")
+            return True
+    except Exception as e:
+        logging.warning(f"[validate_role_exists] Error validating role {role_arn}: {e}")
+        return True  # Assume role exists on unexpected errors
+
+
+def get_validated_role_arn_for_account(account_id: str) -> str | None:
+    """
+    Get role ARN for account with validation.
+    If the role doesn't exist, it will be marked as invalid and skipped.
+    """
+    role_arn = get_role_arn_for_account(account_id)
+    if not role_arn:
+        return None
+    
+    # Check if we've already validated this role recently
+    cache_key = f"role_valid_{role_arn}"
+    now = datetime.utcnow()
+    
+    with _session_lock:
+        if cache_key in _session_cache:
+            session, expires_at = _session_cache[cache_key]
+            if now < expires_at:
+                return role_arn
+            else:
+                del _session_cache[cache_key]
+    
+    # Validate the role
+    if validate_role_exists(role_arn):
+        # Cache the validation result for 5 minutes
+        with _session_lock:
+            _session_cache[cache_key] = (None, now + timedelta(minutes=5))
+        return role_arn
+    else:
+        # Cache the invalidation result for 10 minutes
+        with _session_lock:
+            _session_cache[cache_key] = (None, now + timedelta(minutes=10))
+        logging.error(f"[get_validated_role_arn_for_account] Role {role_arn} for account {account_id} is invalid or deleted")
+        return None
+
+
+def fetch_karpenter_nodes_for_cluster(core_v1_api, role_arn=None):
     logging.info("Fetching Karpenter/Auto-Mode nodes...")
     karpenter_nodes = []
+    
+    # Check if role is valid before attempting Kubernetes API calls
+    if role_arn and not validate_role_exists(role_arn):
+        logging.warning(f"[fetch_karpenter_nodes_for_cluster] Role {role_arn} is invalid or deleted, skipping Karpenter node analysis")
+        return karpenter_nodes
+    
     try:
         nodes = core_v1_api.list_node(timeout_seconds=30).items
         for node in nodes:
@@ -183,6 +284,12 @@ def get_kubernetes_workloads_and_map(cluster_name, cluster_endpoint, cluster_ca,
     }
 
     try:
+        # Validate role before attempting to create API client
+        if role_arn and not validate_role_exists(role_arn):
+            logging.warning(f"[get_kubernetes_workloads_and_map] Role {role_arn} is invalid or deleted, skipping Kubernetes API calls")
+            k8s_data['error'] = f"Role {role_arn} is invalid or deleted. Cannot access Kubernetes API."
+            return k8s_data
+        
         api_client = get_k8s_api_client(cluster_name, cluster_endpoint, cluster_ca, region, role_arn)
         
         # API Client instances
@@ -207,6 +314,14 @@ def get_kubernetes_workloads_and_map(cluster_name, cluster_endpoint, cluster_ca,
                     print(f"⚠️  Kubernetes RBAC: No permission to access {resource_name} - Access entries not configured for this cluster")
                     return []
                 raise
+            except ValueError as e:
+                # Handle validation errors like "Invalid value for `drivers`, must not be `None`"
+                logging.warning(f"Validation error in {func.__name__}: {e}. Returning empty list.")
+                return []
+            except Exception as e:
+                # Handle other unexpected errors
+                logging.warning(f"Unexpected error in {func.__name__}: {e}. Returning empty list.")
+                return []
 
         with ThreadPoolExecutor(max_workers=10) as executor:
             future_map = {
@@ -236,11 +351,15 @@ def get_kubernetes_workloads_and_map(cluster_name, cluster_endpoint, cluster_ca,
                 try: 
                     k8s_data[key] = [api_client.sanitize_for_serialization(item) for item in future.result()]
                 except Exception as e: 
-                    # Only log non-401 errors as errors, 401s are handled gracefully in safe_api_call
-                    if "401" not in str(e):
-                        logging.error(f"Error processing future for {key}: {e}", exc_info=True)
-                    else:
+                    # Handle different types of errors gracefully
+                    if "401" in str(e):
                         print(f"⚠️  Kubernetes RBAC: Unable to fetch {key} - Access entries not configured for this cluster")
+                    elif "ValueError" in str(e) or "Invalid value" in str(e):
+                        logging.warning(f"Validation error processing {key}: {e}. Skipping this resource type.")
+                        k8s_data[key] = []
+                    else:
+                        logging.error(f"Error processing future for {key}: {e}", exc_info=True)
+                        k8s_data[key] = []
         
         now = datetime.now(timezone.utc)
         for key in k8s_data:
@@ -773,7 +892,7 @@ def _process_cluster_data(c_raw, with_details=False, detail_results=None):
         if not cluster_data["workloads"].get("error"):
             try:
                  api_client = get_k8s_api_client(c_raw["name"], c_raw["endpoint"], c_raw["certificateAuthority"]["data"], c_raw["region"], detail_results.get("role_arn"))
-                 karpenter_nodes_raw = fetch_karpenter_nodes_for_cluster(client.CoreV1Api(api_client))
+                 karpenter_nodes_raw = fetch_karpenter_nodes_for_cluster(client.CoreV1Api(api_client), detail_results.get("role_arn"))
             except Exception as e:
                  logging.error(f"Failed to perform agentless node analysis for {c_raw['name']}: {e}")
 
@@ -803,39 +922,92 @@ def get_live_eks_data(user_groups: list[str] | None, group_map_str: str):
             except ValueError: logging.warning(f"Invalid group-account mapping: '{mapping}'")
 
     accessible_accounts = {acc for grp in user_groups for acc in group_to_account_list.get(grp, [])} if user_groups is not None else {acc for acc_list in group_to_account_list.values() for acc in acc_list}
-    all_possible_roles = [{'role_arn': r.strip(), 'id': r.strip().split(':')[4]} for r in os.getenv("AWS_TARGET_ACCOUNTS_ROLES", "").split(',') if r.strip()]
-    
-    # Removed automatic inclusion of primary account - only scan explicitly configured accounts
-
-    accounts_to_scan = [acc for acc in all_possible_roles if not accessible_accounts or acc['id'] in accessible_accounts]
-    if not accounts_to_scan:
-        return {"clusters": [], "quick_info": {}, "errors": ["No AWS accounts configured for scanning. Please set AWS_TARGET_ACCOUNTS_ROLES environment variable."]}
-
-    # Simplified, more robust concurrent model
-    all_clusters_raw, errors = [], []
-    with ThreadPoolExecutor(max_workers=30) as executor:
-        describe_futures = {}
-        for account in accounts_to_scan:
-            session = get_session(account.get('role_arn'))
-            if not session:
-                errors.append(f"Failed session for account {account['id']}."); continue
-            for region in [r.strip() for r in os.getenv("AWS_REGIONS", os.getenv("AWS_DEFAULT_REGION", "us-east-1")).split(',') if r.strip()]:
+    all_possible_roles = []
+    target_roles_str = os.getenv("AWS_TARGET_ACCOUNTS_ROLES", "")
+    if target_roles_str:
+        for r in target_roles_str.split(','):
+            r = r.strip() if r else ""
+            if r and len(r.split(':')) > 4:
                 try:
-                    eks_client = session.client('eks', region_name=region)
-                    cluster_names = [n for p in eks_client.get_paginator('list_clusters').paginate() for n in p.get('clusters', [])]
-                    for name in cluster_names:
-                        future = executor.submit(eks_client.describe_cluster, name=name)
-                        describe_futures[future] = region
-                except Exception as e: errors.append(f"Error listing clusters in {account['id']}/{region}: {e}")
+                    all_possible_roles.append({'role_arn': r, 'id': r.split(':')[4]})
+                except (IndexError, AttributeError) as e:
+                    logging.warning(f"Invalid role ARN format: {r}, error: {e}")
+                    continue
+    
+    try:
+        primary_account_id = boto3.client('sts').get_caller_identity().get('Account')
+        if not any(acc['id'] == primary_account_id for acc in all_possible_roles):
+            all_possible_roles.append({'role_arn': None, 'id': primary_account_id})
+    except Exception as e:
+        logging.warning(f"Could not determine primary account ID from default credentials: {e}")
 
-        for future in as_completed(describe_futures):
-            region = describe_futures[future]
-            try:
-                desc = future.result().get('cluster', {})
-                if desc:
-                    desc['region'] = region
-                    all_clusters_raw.append(desc)
-            except Exception as e: errors.append(f"Error describing cluster: {e}")
+    # Filter accounts and validate roles
+    accounts_to_scan = []
+    for acc in all_possible_roles:
+        if not accessible_accounts or acc['id'] in accessible_accounts:
+            # For accounts with role ARNs, validate the role exists
+            if acc['role_arn']:
+                validated_role = get_validated_role_arn_for_account(acc['id'])
+                if validated_role:
+                    accounts_to_scan.append({'role_arn': validated_role, 'id': acc['id']})
+                else:
+                    logging.warning(f"[get_live_eks_data] Skipping account {acc['id']} - role {acc['role_arn']} is invalid or deleted")
+            else:
+                # Primary account without role ARN
+                accounts_to_scan.append(acc)
+    if not accounts_to_scan and group_to_account_list:
+        return {"clusters": [], "quick_info": {}, "errors": ["User has no access to any configured AWS accounts."]}
+
+    # Retry mechanism for invalid token errors
+    max_retries = 2
+    for retry_attempt in range(max_retries):
+        if retry_attempt > 0:
+            logging.info(f"[get_live_eks_data] Retry attempt {retry_attempt} after cache invalidation")
+            # Clear all cached sessions for retry
+            invalidate_session_cache()
+        
+        # Simplified, more robust concurrent model
+        all_clusters_raw, errors = [], []
+        invalid_token_detected = False
+        
+        with ThreadPoolExecutor(max_workers=30) as executor:
+            describe_futures = {}
+            for account in accounts_to_scan:
+                session = get_session(account.get('role_arn'))
+                if not session:
+                    errors.append(f"Failed session for account {account['id']}."); continue
+                for region in [r.strip() for r in os.getenv("AWS_REGIONS", os.getenv("AWS_DEFAULT_REGION", "us-east-1")).split(',') if r.strip()]:
+                    try:
+                        eks_client = session.client('eks', region_name=region)
+                        cluster_names = [n for p in eks_client.get_paginator('list_clusters').paginate() for n in p.get('clusters', [])]
+                        for name in cluster_names:
+                            future = executor.submit(eks_client.describe_cluster, name=name)
+                            describe_futures[future] = region
+                    except Exception as e: 
+                        error_msg = f"Error listing clusters in {account['id']}/{region}: {e}"
+                        errors.append(error_msg)
+                        # Handle invalid token errors by invalidating cache
+                        if handle_invalid_token_error(account.get('role_arn'), str(e)):
+                            invalid_token_detected = True
+                            logging.info(f"[get_live_eks_data] Invalid token detected for {account['id']}")
+
+            for future in as_completed(describe_futures):
+                region = describe_futures[future]
+                try:
+                    desc = future.result().get('cluster', {})
+                    if desc:
+                        desc['region'] = region
+                        all_clusters_raw.append(desc)
+                except Exception as e: 
+                    error_msg = f"Error describing cluster: {e}"
+                    errors.append(error_msg)
+                    # Handle invalid token errors by invalidating cache
+                    if handle_invalid_token_error(None, str(e)):
+                        invalid_token_detected = True
+        
+        # If no invalid token errors were detected, proceed with results
+        if not invalid_token_detected or retry_attempt == max_retries - 1:
+            break
     
     processed_clusters = [_process_cluster_data(c) for c in all_clusters_raw]
     for c in processed_clusters: c['createdAt'] = c['createdAt'].isoformat() if isinstance(c.get('createdAt'), datetime) else c.get('createdAt')
@@ -852,6 +1024,12 @@ def get_live_eks_data(user_groups: list[str] | None, group_map_str: str):
 
 def get_single_cluster_details(account_id, region, cluster_name, role_arn=None):
     """Fetches comprehensive details for a single EKS cluster concurrently."""
+    # Use validated role ARN if not provided
+    if not role_arn:
+        role_arn = get_validated_role_arn_for_account(account_id)
+        if not role_arn:
+            return {"errors": [f"No valid role found for account {account_id}. Role may have been deleted."]}
+    
     session = get_session(role_arn)
     if not session: return {"errors": [f"Failed to get session for account {account_id}."]}
     
@@ -860,52 +1038,68 @@ def get_single_cluster_details(account_id, region, cluster_name, role_arn=None):
         cluster_raw = eks_client.describe_cluster(name=cluster_name).get('cluster', {})
         if not cluster_raw: return {"errors": [f"Cluster {cluster_name} not found."]}
         cluster_raw['region'] = region
-
-        # Debug: log possible Auto Mode indicators for this cluster
-        try:
-            am_candidates = {
-                'autoMode': cluster_raw.get('autoMode'),
-                'eksAutoMode': cluster_raw.get('eksAutoMode'),
-                'compute.autoMode': (cluster_raw.get('compute') or {}).get('autoMode') if isinstance(cluster_raw.get('compute'), dict) else None,
-                'computeConfig.autoMode': (cluster_raw.get('computeConfig') or {}).get('autoMode') if isinstance(cluster_raw.get('computeConfig'), dict) else None,
-            }
-            logging.debug(f"[AutoMode Debug] {cluster_name} candidates: {am_candidates}")
-        except Exception:
-            pass
-
-        detail_results = {"role_arn": role_arn}
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            future_map = {}
-            future_map[executor.submit(fetch_managed_nodegroups, eks_client, cluster_name)] = "nodegroups"
-            future_map[executor.submit(fetch_addons_for_cluster, eks_client, cluster_name)] = "addons"
-            future_map[executor.submit(fetch_fargate_profiles_for_cluster, eks_client, cluster_name)] = "fargate"
-            future_map[executor.submit(get_security_insights, cluster_raw, eks_client)] = "security"
-            future_map[executor.submit(fetch_access_entries_for_cluster, eks_client, cluster_name)] = "access_entries"
-            
-            # Check if cluster has private endpoint access that might block Kubernetes API calls
-            vpc_config = cluster_raw.get("resourcesVpcConfig", {})
-            endpoint_public_access = vpc_config.get("endpointPublicAccess", True)
-            endpoint_private_access = vpc_config.get("endpointPrivateAccess", False)
-            
-            # Only attempt Kubernetes API calls if we have public access or are running from within the VPC
-            if cluster_raw.get("endpoint") and cluster_raw.get("certificateAuthority", {}).get("data"):
-                if endpoint_public_access:
-                    future_map[executor.submit(get_kubernetes_workloads_and_map, cluster_name, cluster_raw["endpoint"], cluster_raw["certificateAuthority"]["data"], region, role_arn)] = "workloads"
-                else:
-                    detail_results["workloads"] = {"error": "Cluster has private endpoint access only. Kubernetes API calls require VPC access or public endpoint."}
-            else:
-                detail_results["workloads"] = {"error": "Cluster endpoint or certificate authority data is not available."}
-
-            for future in as_completed(future_map):
-                key = future_map[future]
-                try:
-                    detail_results[key] = future.result()
-                except Exception as e:
-                    logging.error(f"Error fetching detail '{key}' for cluster {cluster_name}: {e}", exc_info=True)
-                    detail_results[key] = {"error": f"Failed to fetch {key}: {e}"}
-
-        return _process_cluster_data(cluster_raw, with_details=True, detail_results=detail_results)
     except Exception as e:
-        logging.error(f"Error in get_single_cluster_details for {cluster_name}: {e}", exc_info=True)
-        return {"name": cluster_name, "errors": [f"Error fetching details for cluster {cluster_name}: {e}"]}
+        # Handle invalid token errors by invalidating cache and retrying once
+        if handle_invalid_token_error(role_arn, str(e)):
+            logging.info(f"[get_single_cluster_details] Invalid token detected, retrying with fresh session")
+            invalidate_session_cache(role_arn)
+            session = get_session(role_arn)
+            if not session: return {"errors": [f"Failed to get session for account {account_id} after cache invalidation."]}
+            try:
+                eks_client = session.client('eks', region_name=region)
+                cluster_raw = eks_client.describe_cluster(name=cluster_name).get('cluster', {})
+                if not cluster_raw: return {"errors": [f"Cluster {cluster_name} not found."]}
+                cluster_raw['region'] = region
+            except Exception as retry_e:
+                return {"errors": [f"Error fetching cluster details after retry: {retry_e}"]}
+        else:
+            return {"errors": [f"Error fetching cluster details: {e}"]}
 
+    # Debug: log possible Auto Mode indicators for this cluster
+    try:
+        am_candidates = {
+            'autoMode': cluster_raw.get('autoMode'),
+            'eksAutoMode': cluster_raw.get('eksAutoMode'),
+            'compute.autoMode': (cluster_raw.get('compute') or {}).get('autoMode') if isinstance(cluster_raw.get('compute'), dict) else None,
+            'computeConfig.autoMode': (cluster_raw.get('computeConfig') or {}).get('autoMode') if isinstance(cluster_raw.get('computeConfig'), dict) else None,
+        }
+        logging.debug(f"[AutoMode Debug] {cluster_name} candidates: {am_candidates}")
+    except Exception:
+        pass
+
+    detail_results = {"role_arn": role_arn}
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        future_map = {}
+        future_map[executor.submit(fetch_managed_nodegroups, eks_client, cluster_name)] = "nodegroups"
+        future_map[executor.submit(fetch_addons_for_cluster, eks_client, cluster_name)] = "addons"
+        future_map[executor.submit(fetch_fargate_profiles_for_cluster, eks_client, cluster_name)] = "fargate"
+        future_map[executor.submit(get_security_insights, cluster_raw, eks_client)] = "security"
+        future_map[executor.submit(fetch_access_entries_for_cluster, eks_client, cluster_name)] = "access_entries"
+        
+        # Check if cluster has private endpoint access that might block Kubernetes API calls
+        vpc_config = cluster_raw.get("resourcesVpcConfig", {})
+        endpoint_public_access = vpc_config.get("endpointPublicAccess", True)
+        endpoint_private_access = vpc_config.get("endpointPrivateAccess", False)
+        
+        # Only attempt Kubernetes API calls if we have public access or are running from within the VPC
+        if cluster_raw.get("endpoint") and cluster_raw.get("certificateAuthority", {}).get("data"):
+            if endpoint_public_access:
+                # Check if role is valid for Kubernetes API calls
+                if role_arn and not validate_role_exists(role_arn):
+                    detail_results["workloads"] = {"error": f"Role {role_arn} is invalid or deleted. Cannot access Kubernetes API."}
+                else:
+                    future_map[executor.submit(get_kubernetes_workloads_and_map, cluster_name, cluster_raw["endpoint"], cluster_raw["certificateAuthority"]["data"], region, role_arn)] = "workloads"
+            else:
+                detail_results["workloads"] = {"error": "Cluster has private endpoint access only. Kubernetes API calls require VPC access or public endpoint."}
+        else:
+            detail_results["workloads"] = {"error": "Cluster endpoint or certificate authority data is not available."}
+
+        for future in as_completed(future_map):
+            key = future_map[future]
+            try:
+                detail_results[key] = future.result()
+            except Exception as e:
+                logging.error(f"Error fetching detail '{key}' for cluster {cluster_name}: {e}", exc_info=True)
+                detail_results[key] = {"error": f"Failed to fetch {key}: {e}"}
+
+    return _process_cluster_data(cluster_raw, with_details=True, detail_results=detail_results)

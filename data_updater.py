@@ -5,7 +5,7 @@ from datetime import datetime
 
 # FIX: Import the 'ClusterRegistry' model directly to use it for queries.
 from database import SessionLocal, update_cluster_data, get_all_clusters_summary, ClusterRegistry, delete_cluster
-from aws_data_fetcher import get_live_eks_data, get_single_cluster_details, get_role_arn_for_account
+from aws_data_fetcher import get_live_eks_data, get_single_cluster_details, get_role_arn_for_account, get_validated_role_arn_for_account
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -74,7 +74,9 @@ async def update_single_cluster_data(db_session: Session, account_id: str, regio
         db_session = SessionLocal()
     
     try:
-        role_arn = get_role_arn_for_account(account_id)
+        role_arn = get_validated_role_arn_for_account(account_id)
+        if not role_arn:
+            raise Exception(f"No valid role found for account {account_id}. Role may have been deleted.")
         detailed_data = get_single_cluster_details(account_id, region, cluster_name, role_arn)
         
         if detailed_data and not detailed_data.get("errors"):

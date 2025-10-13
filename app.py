@@ -37,6 +37,7 @@ from aws_data_fetcher import (
     get_control_plane_logs,
     get_k8s_api_client,
     get_role_arn_for_account,
+    get_validated_role_arn_for_account,
     fetch_access_entries_for_cluster,
     EKS_EOL_DATES,
 )
@@ -122,7 +123,9 @@ async def read_cluster_detail(request: Request, account_id: str, region: str, cl
         access_cfg = cluster_details.get('access_config') or {}
         if not access_cfg.get('authenticationMode'):
             from aws_data_fetcher import get_session
-            role_arn = get_role_arn_for_account(account_id)
+            role_arn = get_validated_role_arn_for_account(account_id)
+            if not role_arn:
+                return templates.TemplateResponse("error.html", {"request": request, "errors": [f"No valid role found for account {account_id}. Role may have been deleted."]}, status_code=403)
             session = get_session(role_arn)
             if session:
                 eks_client = session.client('eks', region_name=region)
@@ -141,6 +144,40 @@ async def refresh_data(request: Request):
     asyncio.create_task(trigger_update())
     return JSONResponse(content={"status": "success", "message": "Full dashboard data refresh has been triggered."})
 
+@app.post("/api/invalidate-cache")
+async def invalidate_cache():
+    """Manually invalidate AWS session cache. Useful when IAM roles are deleted/recreated."""
+    from aws_data_fetcher import invalidate_session_cache
+    invalidate_session_cache()
+    return JSONResponse(content={"status": "success", "message": "AWS session cache has been invalidated."})
+
+@app.post("/api/validate-roles")
+async def validate_roles():
+    """Manually validate all configured IAM roles. Useful when roles are deleted/recreated."""
+    from aws_data_fetcher import get_role_arn_for_account, validate_role_exists, invalidate_session_cache
+    import os
+    
+    # Clear role validation cache
+    invalidate_session_cache()
+    
+    target_roles_str = os.getenv("AWS_TARGET_ACCOUNTS_ROLES", "")
+    if not target_roles_str:
+        return JSONResponse(content={"status": "success", "message": "No roles configured to validate."})
+    
+    results = []
+    for role_arn in target_roles_str.split(','):
+        role_arn = role_arn.strip()
+        if role_arn:
+            account_id = role_arn.split(':')[4] if len(role_arn.split(':')) > 4 else "unknown"
+            is_valid = validate_role_exists(role_arn)
+            results.append({
+                "account_id": account_id,
+                "role_arn": role_arn,
+                "valid": is_valid
+            })
+    
+    return JSONResponse(content={"status": "success", "message": "Role validation completed.", "results": results})
+
 @app.post("/api/refresh-cluster/{account_id}/{region}/{cluster_name}")
 async def refresh_cluster(account_id: str, region: str, cluster_name: str):
     """Refresh data for a single cluster"""
@@ -155,19 +192,25 @@ async def refresh_cluster(account_id: str, region: str, cluster_name: str):
 async def upgrade_nodegroup_api(request: Request):
     data = await request.json()
     account_id = data.get("accountId")
-    role_arn = get_role_arn_for_account(account_id)
+    role_arn = get_validated_role_arn_for_account(account_id)
+    if not role_arn:
+        return JSONResponse(content={"error": f"No valid role found for account {account_id}. Role may have been deleted."}, status_code=403)
     result = upgrade_nodegroup_version(account_id, data.get("region"), data.get("clusterName"), data.get("nodegroupName"), role_arn)
     return JSONResponse(content=result, status_code=400 if "error" in result else 200)
 
 @app.get("/api/metrics/{account_id}/{region}/{cluster_name}")
 async def get_metrics_api(account_id: str, region: str, cluster_name: str):
-    role_arn = get_role_arn_for_account(account_id)
+    role_arn = get_validated_role_arn_for_account(account_id)
+    if not role_arn:
+        return JSONResponse(content={"error": f"No valid role found for account {account_id}. Role may have been deleted."}, status_code=403)
     metrics = get_cluster_metrics(account_id, region, cluster_name, role_arn)
     return JSONResponse(content=metrics, status_code=500 if "error" in metrics else 200)
 
 @app.get("/api/control-plane-logs/{account_id}/{region}/{cluster_name}")
 async def get_control_plane_logs_api(account_id: str, region: str, cluster_name: str):
-    role_arn = get_role_arn_for_account(account_id)
+    role_arn = get_validated_role_arn_for_account(account_id)
+    if not role_arn:
+        return JSONResponse(content={"error": f"No valid role found for account {account_id}. Role may have been deleted."}, status_code=403)
     logs = get_control_plane_logs(account_id, region, cluster_name, role_arn)
     return JSONResponse(content=logs, status_code=500 if "error" in logs else 200)
 
@@ -202,7 +245,11 @@ async def stream_logs(websocket: WebSocket, account_id: str, region: str, cluste
             await websocket.send_text("ERROR: Cluster has private endpoint access only. Log streaming requires VPC access or public endpoint.")
             return
             
-        api = get_k8s_api_client(cluster_name, cluster["endpoint"], cluster["certificateAuthority"]["data"], region, get_role_arn_for_account(account_id))
+        role_arn = get_validated_role_arn_for_account(account_id)
+        if not role_arn:
+            await websocket.send_text("ERROR: No valid role found for this account. Role may have been deleted.")
+            return
+        api = get_k8s_api_client(cluster_name, cluster["endpoint"], cluster["certificateAuthority"]["data"], region, role_arn)
         core = client.CoreV1Api(api)
         streamer = stream.stream(core.read_namespaced_pod_log, name=pod_name, namespace=namespace, follow=True, _preload_content=False)
         while streamer.is_open():
@@ -232,7 +279,11 @@ async def stream_events(websocket: WebSocket, account_id: str, region: str, clus
             await websocket.send_text(json.dumps({"type": "ERROR", "message": "Cluster has private endpoint access only. Event streaming requires VPC access or public endpoint."}))
             return
             
-        api = get_k8s_api_client(cluster_name, cluster["endpoint"], cluster["certificateAuthority"]["data"], region, get_role_arn_for_account(account_id))
+        role_arn = get_validated_role_arn_for_account(account_id)
+        if not role_arn:
+            await websocket.send_text(json.dumps({"type": "ERROR", "message": "No valid role found for this account. Role may have been deleted."}))
+            return
+        api = get_k8s_api_client(cluster_name, cluster["endpoint"], cluster["certificateAuthority"]["data"], region, role_arn)
         core = client.CoreV1Api(api)
         w = watch.Watch()
         for event in w.stream(core.list_event_for_all_namespaces, timeout_seconds=3600):

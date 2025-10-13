@@ -2,7 +2,7 @@ import os
 import json
 import re
 from datetime import datetime
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, JSON, ForeignKey, Boolean, Text, MetaData, Table, UniqueConstraint
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, JSON, ForeignKey, Boolean, Text, MetaData, Table, UniqueConstraint, inspect
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.sql import text
@@ -54,54 +54,74 @@ def create_cluster_tables(account_id: str, region: str, cluster_name: str):
     """Create dedicated tables for a cluster"""
     table_name = create_cluster_table_name(account_id, region, cluster_name)
     
-    # Define table schemas
-    nodegroups_table = Table(
-        f"{table_name}_nodegroups",
-        Base.metadata,
-        Column('id', Integer, primary_key=True, index=True),
-        Column('name', String),
-        Column('status', String),
-        Column('ami_type', String),
-        Column('instance_types', JSON),
-        Column('release_version', String),
-        Column('version', String),
-        Column('created_at', DateTime),
-        Column('desired_size', Integer),
-        Column('is_karpenter_node', Boolean, default=False),
-    )
+    # Check if tables already exist to avoid index conflicts
+    with engine.connect() as conn:
+        inspector = inspect(engine)
+        existing_tables = inspector.get_table_names()
+        
+        tables_to_create = []
+        
+        # Define table schemas with extend_existing=True to handle redefinition
+        if f"{table_name}_nodegroups" not in existing_tables:
+            nodegroups_table = Table(
+                f"{table_name}_nodegroups",
+                Base.metadata,
+                Column('id', Integer, primary_key=True, index=True),
+                Column('name', String),
+                Column('status', String),
+                Column('ami_type', String),
+                Column('instance_types', JSON),
+                Column('release_version', String),
+                Column('version', String),
+                Column('created_at', DateTime),
+                Column('desired_size', Integer),
+                Column('is_karpenter_node', Boolean, default=False),
+                extend_existing=True
+            )
+            tables_to_create.append(nodegroups_table)
+        
+        if f"{table_name}_addons" not in existing_tables:
+            addons_table = Table(
+                f"{table_name}_addons",
+                Base.metadata,
+                Column('id', Integer, primary_key=True, index=True),
+                Column('name', String),
+                Column('version', String),
+                Column('status', String),
+                Column('pod_identity_display', String),
+                Column('irsa_role_arn', String),
+                extend_existing=True
+            )
+            tables_to_create.append(addons_table)
+        
+        if f"{table_name}_fargate_profiles" not in existing_tables:
+            fargate_profiles_table = Table(
+                f"{table_name}_fargate_profiles",
+                Base.metadata,
+                Column('id', Integer, primary_key=True, index=True),
+                Column('name', String),
+                Column('status', String),
+                extend_existing=True
+            )
+            tables_to_create.append(fargate_profiles_table)
+        
+        if f"{table_name}_access_entries" not in existing_tables:
+            access_entries_table = Table(
+                f"{table_name}_access_entries",
+                Base.metadata,
+                Column('id', Integer, primary_key=True, index=True),
+                Column('principal_arn', String, index=True),
+                Column('type', String),
+                Column('username', String),
+                Column('groups', JSON),
+                Column('access_policies', JSON),
+                extend_existing=True
+            )
+            tables_to_create.append(access_entries_table)
     
-    addons_table = Table(
-        f"{table_name}_addons",
-        Base.metadata,
-        Column('id', Integer, primary_key=True, index=True),
-        Column('name', String),
-        Column('version', String),
-        Column('status', String),
-        Column('pod_identity_display', String),
-        Column('irsa_role_arn', String),
-    )
-    
-    fargate_profiles_table = Table(
-        f"{table_name}_fargate_profiles",
-        Base.metadata,
-        Column('id', Integer, primary_key=True, index=True),
-        Column('name', String),
-        Column('status', String),
-    )
-    
-    access_entries_table = Table(
-        f"{table_name}_access_entries",
-        Base.metadata,
-        Column('id', Integer, primary_key=True, index=True),
-        Column('principal_arn', String, index=True),
-        Column('type', String),
-        Column('username', String),
-        Column('groups', JSON),
-        Column('access_policies', JSON),
-    )
-    
-    # Create the tables
-    Base.metadata.create_all(bind=engine, tables=[nodegroups_table, addons_table, fargate_profiles_table, access_entries_table])
+    # Create only the tables that don't exist yet
+    if tables_to_create:
+        Base.metadata.create_all(bind=engine, tables=tables_to_create)
     
     return table_name
 
