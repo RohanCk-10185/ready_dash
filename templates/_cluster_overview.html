@@ -55,6 +55,22 @@
                 </div>
             </div>
         </div>
+        <div class="widget">
+            <div class="widget-header"><h2>Deletion Protection</h2></div>
+            <div class="widget-content">
+                <div class="info-grid">
+                    <strong>Status</strong>
+                    {% if cluster.deletion_protection_status == 'Enabled' %}
+                        <span class="status-badge status-eks-auto-enabled">Enabled</span>
+                    {% else %}
+                        <span class="status-badge status-eks-auto-disabled">Disabled</span>
+                    {% endif %}
+                    <strong style="grid-column: 1 / -1; margin-top: 1rem; color: var(--text-secondary); font-weight: 400; font-size: .9rem;">
+                        Deletion protection prevents accidental deletion of this cluster and helps maintain operational continuity.
+                    </strong>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div class="widget">

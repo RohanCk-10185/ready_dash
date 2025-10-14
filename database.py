@@ -355,6 +355,7 @@ def get_cluster_details(session: Session, account_id: str, region: str, cluster_
     }
 
     cluster_dict['createdAt'] = cluster.created_at
+    cluster_dict['platformVersion'] = cluster.platform_version
     cluster_dict['certificateAuthority'] = {'data': cluster.certificate_authority_data}
 
     # Get subresources from dedicated tables
