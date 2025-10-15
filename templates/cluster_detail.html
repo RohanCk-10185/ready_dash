@@ -979,14 +979,38 @@
         const lastRefreshedSpan = document.getElementById('last-refreshed-time');
         if (lastRefreshedSpan) {
             const clusterKey = `lastClusterRefresh_${CLUSTER_INFO.accountId}_${CLUSTER_INFO.region}_${CLUSTER_INFO.name}`;
-            const lastRefreshTime = localStorage.getItem(clusterKey);
+            const globalRefreshTime = localStorage.getItem('lastGlobalRefresh');
+            const clusterRefreshTime = localStorage.getItem(clusterKey);
+            
+            // Use the more recent of the two refresh times
+            let lastRefreshTime = null;
+            let refreshSource = '';
+            
+            if (globalRefreshTime && clusterRefreshTime) {
+                const globalDate = new Date(globalRefreshTime);
+                const clusterDate = new Date(clusterRefreshTime);
+                if (globalDate > clusterDate) {
+                    lastRefreshTime = globalRefreshTime;
+                    refreshSource = 'global';
+                } else {
+                    lastRefreshTime = clusterRefreshTime;
+                    refreshSource = 'cluster';
+                }
+            } else if (globalRefreshTime) {
+                lastRefreshTime = globalRefreshTime;
+                refreshSource = 'global';
+            } else if (clusterRefreshTime) {
+                lastRefreshTime = clusterRefreshTime;
+                refreshSource = 'cluster';
+            }
+            
             if (lastRefreshTime) {
                 const refreshDate = new Date(lastRefreshTime);
                 lastRefreshedSpan.textContent = `Last Updated: ${refreshDate.toLocaleTimeString()}`;
-                lastRefreshedSpan.title = `Last cluster refresh at ${refreshDate.toISOString()}`;
+                lastRefreshedSpan.title = `Last ${refreshSource} refresh at ${refreshDate.toISOString()}`;
             } else {
                 lastRefreshedSpan.textContent = `Last Updated: Never`;
-                lastRefreshedSpan.title = `No cluster refresh performed yet`;
+                lastRefreshedSpan.title = `No refresh performed yet`;
             }
         }
 

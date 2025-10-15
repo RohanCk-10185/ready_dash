@@ -189,6 +189,14 @@
                             const refreshTime = new Date().toISOString();
                             localStorage.setItem('lastGlobalRefresh', refreshTime);
                             
+                            // Update all cluster-specific refresh timestamps to keep them in sync
+                            if (typeof allClusters !== 'undefined' && allClusters.length > 0) {
+                                allClusters.forEach(cluster => {
+                                    const clusterKey = `lastClusterRefresh_${cluster.account_id}_${cluster.region}_${cluster.name}`;
+                                    localStorage.setItem(clusterKey, refreshTime);
+                                });
+                            }
+                            
                             globalLoaderText.textContent = 'Sync complete! Reloading page...';
                             globalLoaderText.classList.add('success-message');
                             setTimeout(() => window.location.reload(), 1500);
