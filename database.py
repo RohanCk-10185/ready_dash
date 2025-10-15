@@ -330,12 +330,31 @@ def _update_table_data(session: Session, table_name: str, incoming_data: list, d
 
 def get_all_clusters_summary(session: Session):
     clusters = session.query(ClusterRegistry).all()
-    return [{
-        "name": c.name, "account_id": c.account_id, "region": c.region, "version": c.version, "status": c.status,
-        "createdAt": c.created_at.isoformat() if c.created_at else None,
-        "health_status_summary": "HEALTHY" if not c.health_issues else "HAS_ISSUES",
-        "upgrade_insight_status": "PASSING" if c.version and c.version >= "1.29" else "NEEDS_ATTENTION",
-    } for c in clusters]
+    print(f"\nDATABASE DEBUG - get_all_clusters_summary:")
+    print(f"  Raw clusters from DB: {len(clusters)}")
+    
+    result = []
+    for i, c in enumerate(clusters, 1):
+        health_status = "HEALTHY" if not c.health_issues else "HAS_ISSUES"
+        upgrade_status = "PASSING" if c.version and c.version >= "1.29" else "NEEDS_ATTENTION"
+        
+        cluster_data = {
+            "name": c.name, "account_id": c.account_id, "region": c.region, "version": c.version, "status": c.status,
+            "createdAt": c.created_at.isoformat() if c.created_at else None,
+            "health_status_summary": health_status,
+            "upgrade_insight_status": upgrade_status,
+        }
+        
+        print(f"  Cluster {i}: {c.name}")
+        print(f"    health_issues (raw): {c.health_issues}")
+        print(f"    health_status_summary: {health_status}")
+        print(f"    version: {c.version}")
+        print(f"    upgrade_insight_status: {upgrade_status}")
+        
+        result.append(cluster_data)
+    
+    print(f"  Returning {len(result)} processed clusters")
+    return result
 
 def get_cluster_details(session: Session, account_id: str, region: str, cluster_name: str):
     cluster = session.query(ClusterRegistry).filter(

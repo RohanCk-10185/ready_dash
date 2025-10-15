@@ -25,6 +25,7 @@
     {% endif %}
 
     <h3 class="section-title">Fleet Summary</h3>
+   
     <div class="quick-info-grid">
          <div class="info-box"><div class="icon-bg"><i data-feather="server"></i></div><div><div class="value count-up" data-target="{{ quick_info.total_clusters | default(0) }}">0</div><div class="label">Total Clusters</div></div></div>
          <div class="info-box"><div class="icon-bg"><i data-feather="activity"></i></div><div><div class="value count-up" data-target="{{ quick_info.clusters_with_health_issues | default(0) }}">0</div><div class="label">With Health Issues</div></div></div>
@@ -90,29 +91,44 @@
             renderChart('accessConfigChart', 'doughnut', accessConfigCounts);
         }
 
-        function animateCounters() {
-            document.querySelectorAll('.count-up').forEach(el => {
-                const target = +el.getAttribute('data-target');
-                let count = 0;
-                const increment = target / 60;
-
-                const updateCount = () => {
-                    count += increment;
-                    if (count < target) {
-                        el.innerText = Math.ceil(count);
-                        requestAnimationFrame(updateCount);
-                    } else {
-                        el.innerText = target;
-                    }
-                };
-
-                updateCount();
+        function setCounterValues() {
+            console.log('Setting counter values directly...');
+            
+            // Get the values from the debug box or use the template values
+            const counters = document.querySelectorAll('.count-up');
+            console.log('Found', counters.length, 'counters');
+            
+            counters.forEach((el, index) => {
+                const targetValue = el.getAttribute('data-target');
+                console.log(`Counter ${index + 1}: target="${targetValue}"`);
+                
+                if (targetValue && targetValue !== '0') {
+                    el.innerText = targetValue;
+                    console.log(`Set counter ${index + 1} to ${targetValue}`);
+                }
             });
         }
 
+        // Try multiple approaches to ensure it works
+        function initializeCounters() {
+            console.log('Initializing counters...');
+            setCounterValues();
+        }
+
+        // Run immediately when script loads
+        initializeCounters();
+
+        // Also run when DOM is ready
         document.addEventListener('DOMContentLoaded', () => {
+            console.log('DOM loaded, initializing counters again...');
             updateAllCharts(allClusters);
-            animateCounters();
+            initializeCounters();
         });
+
+        // Fallback after a delay
+        setTimeout(() => {
+            console.log('Fallback: Setting counter values...');
+            setCounterValues();
+        }, 1000);
     </script>
 {% endblock %}
