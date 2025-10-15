@@ -330,8 +330,8 @@ def _update_table_data(session: Session, table_name: str, incoming_data: list, d
 
 def get_all_clusters_summary(session: Session):
     clusters = session.query(ClusterRegistry).all()
-    print(f"\nDATABASE DEBUG - get_all_clusters_summary:")
-    print(f"  Raw clusters from DB: {len(clusters)}")
+    # print(f"\nDATABASE DEBUG - get_all_clusters_summary:")
+    # print(f"  Raw clusters from DB: {len(clusters)}")
     
     result = []
     for i, c in enumerate(clusters, 1):
@@ -345,15 +345,15 @@ def get_all_clusters_summary(session: Session):
             "upgrade_insight_status": upgrade_status,
         }
         
-        print(f"  Cluster {i}: {c.name}")
-        print(f"    health_issues (raw): {c.health_issues}")
-        print(f"    health_status_summary: {health_status}")
-        print(f"    version: {c.version}")
-        print(f"    upgrade_insight_status: {upgrade_status}")
+        # print(f"  Cluster {i}: {c.name}")
+        # print(f"    health_issues (raw): {c.health_issues}")
+        # print(f"    health_status_summary: {health_status}")
+        # print(f"    version: {c.version}")
+        # print(f"    upgrade_insight_status: {upgrade_status}")
         
         result.append(cluster_data)
     
-    print(f"  Returning {len(result)} processed clusters")
+    # print(f"  Returning {len(result)} processed clusters")
     return result
 
 def get_cluster_details(session: Session, account_id: str, region: str, cluster_name: str):

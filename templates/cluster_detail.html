@@ -247,6 +247,11 @@
             loadAndInitializeResourcesTab();
         } else if (tabName === 'observability' && !metricsLoaded) {
             loadMetrics();
+        } else if (tabName === 'compute') {
+            // Initialize compute tab pagination if not already done
+            if (typeof window.initializeComputeTabOnTabSwitch === 'function') {
+                window.initializeComputeTabOnTabSwitch();
+            }
         }
         feather.replace();
     }

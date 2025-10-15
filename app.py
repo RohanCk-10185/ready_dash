@@ -97,33 +97,33 @@ async def read_dashboard(request: Request, db: Session = Depends(database.get_db
     now = datetime.now(timezone.utc)
     ninety_days_from_now = now + timedelta(days=90)
     
-    print("=" * 60)
-    print("DASHBOARD ROUTE DEBUG - FLEET SUMMARY")
-    print("=" * 60)
-    print(f"Number of clusters from database: {len(all_clusters)}")
-    print(f"Current time: {now}")
-    print(f"90 days from now: {ninety_days_from_now}")
+    # print("=" * 60)
+    # print("DASHBOARD ROUTE DEBUG - FLEET SUMMARY")
+    # print("=" * 60)
+    # print(f"Number of clusters from database: {len(all_clusters)}")
+    # print(f"Current time: {now}")
+    # print(f"90 days from now: {ninety_days_from_now}")
     
-    if all_clusters:
-        print("\nCluster details:")
-        for i, cluster in enumerate(all_clusters, 1):
-            print(f"  Cluster {i}: {cluster['name']} - {cluster['version']} - {cluster['health_status_summary']} - {cluster['upgrade_insight_status']}")
+    # if all_clusters:
+    #     print("\nCluster details:")
+    #     for i, cluster in enumerate(all_clusters, 1):
+    #         print(f"  Cluster {i}: {cluster['name']} - {cluster['version']} - {cluster['health_status_summary']} - {cluster['upgrade_insight_status']}")
     
     # Calculate each metric with debug prints
     total_clusters = len(all_clusters)
-    print(f"\n1. Total Clusters: {total_clusters}")
+    # print(f"\n1. Total Clusters: {total_clusters}")
     
     health_issues = sum(1 for c in all_clusters if c["health_status_summary"] == "HAS_ISSUES")
-    print(f"2. Clusters with Health Issues: {health_issues}")
+    # print(f"2. Clusters with Health Issues: {health_issues}")
     
     upgrade_attention = sum(1 for c in all_clusters if c["upgrade_insight_status"] == "NEEDS_ATTENTION")
-    print(f"3. Clusters with Upgrade Attention: {upgrade_attention}")
+    # print(f"3. Clusters with Upgrade Attention: {upgrade_attention}")
     
     eol_count = sum(1 for c in all_clusters if c["version"] and (eol := EKS_EOL_DATES.get(c["version"])) and now < eol <= ninety_days_from_now)
-    print(f"4. Clusters Nearing EOL (90d): {eol_count}")
+    # print(f"4. Clusters Nearing EOL (90d): {eol_count}")
     
     accounts = len({c["account_id"] for c in all_clusters})
-    print(f"5. Active Accounts: {accounts}")
+    # print(f"5. Active Accounts: {accounts}")
     
     quick_info = {
         "total_clusters": total_clusters,
@@ -133,10 +133,10 @@ async def read_dashboard(request: Request, db: Session = Depends(database.get_db
         "accounts_running_kubernetes_clusters": accounts,
     }
     
-    print(f"\nFinal quick_info values being sent to template:")
-    for key, value in quick_info.items():
-        print(f"  {key}: {value}")
-    print("=" * 60)
+    # print(f"\nFinal quick_info values being sent to template:")
+    # for key, value in quick_info.items():
+    #     print(f"  {key}: {value}")
+    # print("=" * 60)
     
     context = {"request": request, "clusters": all_clusters, "quick_info": quick_info, "errors": []}
     return templates.TemplateResponse("dashboard.html", context)

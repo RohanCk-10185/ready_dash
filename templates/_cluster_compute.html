@@ -58,6 +58,26 @@
     .fade-in {
         animation: fadeIn 0.2s ease-in-out;
     }
+
+    /* Pagination Styles */
+    .pagination-controls {
+        padding: 1rem 1.5rem;
+        border-top: 1px solid var(--border-color);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background-color: var(--surface-color);
+    }
+
+    .pagination-controls button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .pagination-info {
+        color: var(--text-muted);
+        font-size: 0.9rem;
+    }
     </style>
 
     <!-- Nodes Section -->
@@ -91,34 +111,19 @@
                             <th>Created At</th>
                         </tr>
                     </thead>
-                    <tbody>
-                        {% if cluster.workloads and 'nodes' in cluster.workloads and cluster.workloads['nodes'] %}
-                            {% for node in cluster.workloads['nodes'] %}
-                                {% set labels = node.metadata.labels or {} %}
-                                {% set nodegroup_name = labels.get('eks.amazonaws.com/nodegroup') %}
-                                {% set is_karpenter_or_auto = 'karpenter.sh/provisioner-name' in labels or labels.get('eks.amazonaws.com/compute-type') == 'ec2' %}
-                                {% set data_nodegroup_value = nodegroup_name if nodegroup_name else 'karpenter' if is_karpenter_or_auto else 'other' %}
-                                {% set compute_display_name = nodegroup_name if nodegroup_name else 'Karpenter/Auto-Mode' if is_karpenter_or_auto else 'EC2 (Self-managed)' %}
-                                {% set node_status_obj = (node.status.conditions | selectattr('type', 'equalto', 'Ready') | list | first) %}
-                                {% set node_status = 'Ready' if node_status_obj and node_status_obj.status == 'True' else 'NotReady' %}
-
-                                <tr data-nodegroup="{{ data_nodegroup_value }}">
-                                    <td>{{ node.metadata.name }}</td>
-                                    <td><span class="status-badge status-{{ node_status.lower() }}">{{ node_status }}</span></td>
-                                    <td>{{ labels.get('node.kubernetes.io/instance-type', 'N/A') }}</td>
-                                    <td>{{ compute_display_name }}</td>
-                                    <td>{{ node.metadata.creationTimestamp.split('T')[0] if node.metadata.creationTimestamp else 'N/A' }}</td>
-                                </tr>
-                            {% endfor %}
-                        {% else %}
-                            <tr>
-                                <td colspan="5" class="text-muted" style="text-align: center; padding: 2rem;">
-                                    Node data not available. Workload fetching might be disabled or failed.
-                                </td>
-                            </tr>
-                        {% endif %}
+                    <tbody id="nodes-table-body">
+                        <!-- Nodes will be loaded dynamically with pagination -->
                     </tbody>
                 </table>
+            </div>
+            <div id="nodes-pagination-controls" class="pagination-controls" style="display: none;">
+                <button id="nodes-pagination-prev" class="action-btn">Previous</button>
+                <span id="nodes-pagination-info" class="pagination-info"></span>
+                <button id="nodes-pagination-next" class="action-btn">Next</button>
+            </div>
+            <div id="nodes-table-empty" class="no-data-message" style="display: none; padding: 4rem;">
+                <p>No nodes found.</p>
+                <p class="text-muted">This cluster does not have any nodes or node data is not available.</p>
             </div>
         </div>
     </div>
@@ -139,30 +144,19 @@
                             <th>Action</th>
                         </tr>
                     </thead>
-                    <tbody>
-                        {% set managed_ngs = cluster.nodegroups_data | selectattr('is_karpenter_node', 'equalto', false) | list %}
-                        {% for ng in managed_ngs %}
-                        <tr>
-                            <td>{{ ng.name }}</td>
-                            <td><span class="status-badge status-{{ ng.status.lower() if ng.status else 'unknown' }}">{{ ng.status }}</span></td>
-                            <td>{{ ng.desired_size }}</td>
-                            <td>{{ ng.release_version }}</td>
-                            <td>{{ ng.version }}</td>
-                            <td>
-                                {% if not ng.is_karpenter_node and ng.version != cluster.version %}
-                                <button class="action-btn upgrade-btn" data-nodegroup-name="{{ ng.name }}"><i data-feather="chevrons-up"></i> Upgrade Now</button>
-                                {% else %}<span class="text-muted">Up to date</span>{% endif %}
-                            </td>
-                        </tr>
-                        {% else %}
-                        <tr>
-                            <td colspan="6" class="text-muted" style="text-align: center; padding: 2rem;">
-                                No managed nodegroups found.
-                            </td>
-                        </tr>
-                        {% endfor %}
+                    <tbody id="nodegroups-table-body">
+                        <!-- Node groups will be loaded dynamically with pagination -->
                     </tbody>
                 </table>
+            </div>
+            <div id="nodegroups-pagination-controls" class="pagination-controls" style="display: none;">
+                <button id="nodegroups-pagination-prev" class="action-btn">Previous</button>
+                <span id="nodegroups-pagination-info" class="pagination-info"></span>
+                <button id="nodegroups-pagination-next" class="action-btn">Next</button>
+            </div>
+            <div id="nodegroups-table-empty" class="no-data-message" style="display: none; padding: 4rem;">
+                <p>No node groups found.</p>
+                <p class="text-muted">This cluster does not have any managed node groups.</p>
             </div>
         </div>
     </div>
@@ -194,39 +188,262 @@
     </div>
 </div>
 
-<!-- JS to control dynamic count and visibility -->
+<!-- JS for pagination and dynamic content -->
 <script>
-function updateNodeCount() {
+// Pagination state for nodes
+let nodesPagination = {
+    currentPage: 1,
+    itemsPerPage: 10,
+    filteredData: []
+};
+
+// Pagination state for node groups
+let nodegroupsPagination = {
+    currentPage: 1,
+    itemsPerPage: 10,
+    filteredData: []
+};
+
+// Raw data storage
+let nodesData = [];
+let nodegroupsData = [];
+
+// Initialize compute tab data
+function initializeComputeTab() {
+    console.log('Initializing compute tab...');
+    
+    // Extract nodes data from template
+    {% if cluster.workloads and 'nodes' in cluster.workloads and cluster.workloads['nodes'] %}
+    nodesData = {{ cluster.workloads['nodes'] | tojson }};
+    {% else %}
+    nodesData = [];
+    {% endif %}
+
+    // Extract node groups data from template
+    {% set managed_ngs = cluster.nodegroups_data | selectattr('is_karpenter_node', 'equalto', false) | list %}
+    nodegroupsData = {{ managed_ngs | tojson }};
+
+    console.log('Nodes data:', nodesData.length, 'items');
+    console.log('Node groups data:', nodegroupsData.length, 'items');
+
+    // Initialize both tables
+    initializeNodesTable();
+    initializeNodegroupsTable();
+    
+    // Set up filter event listener
+    document.getElementById('nodegroup-filter')?.addEventListener('change', applyNodesFilter);
+}
+
+// Initialize nodes table
+function initializeNodesTable() {
+    applyNodesFilter();
+    setupNodesPaginationEvents();
+}
+
+// Initialize node groups table
+function initializeNodegroupsTable() {
+    applyNodegroupsFilter();
+    setupNodegroupsPaginationEvents();
+}
+
+// Apply nodes filter
+function applyNodesFilter() {
     const filter = document.getElementById('nodegroup-filter');
+    const selectedValue = filter ? filter.value : 'all';
+    
+    // Filter nodes based on nodegroup
+    nodesPagination.filteredData = nodesData.filter(node => {
+        const labels = node.metadata.labels || {};
+        const nodegroup_name = labels['eks.amazonaws.com/nodegroup'];
+        const is_karpenter_or_auto = 'karpenter.sh/provisioner-name' in labels || labels['eks.amazonaws.com/compute-type'] === 'ec2';
+        const data_nodegroup_value = nodegroup_name || (is_karpenter_or_auto ? 'karpenter' : 'other');
+        
+        if (selectedValue === 'all') return true;
+        if (selectedValue === 'karpenter') return data_nodegroup_value === 'karpenter';
+        return data_nodegroup_value === selectedValue;
+    });
+    
+    nodesPagination.currentPage = 1;
+    renderNodesTable();
+    updateNodeCount();
+}
+
+// Apply node groups filter (currently no filter, but structure for future)
+function applyNodegroupsFilter() {
+    nodegroupsPagination.filteredData = [...nodegroupsData];
+    nodegroupsPagination.currentPage = 1;
+    renderNodegroupsTable();
+}
+
+// Render nodes table
+function renderNodesTable() {
+    const { currentPage, itemsPerPage, filteredData } = nodesPagination;
+    const start = (currentPage - 1) * itemsPerPage;
+    const end = start + itemsPerPage;
+    const pageData = filteredData.slice(start, end);
+    
+    console.log('Rendering nodes table:', {
+        currentPage,
+        itemsPerPage,
+        filteredDataLength: filteredData.length,
+        pageDataLength: pageData.length,
+        start,
+        end
+    });
+    
+    const tbody = document.getElementById('nodes-table-body');
+    const tableContainer = document.querySelector('#nodes-table').closest('.table-container');
+    const emptyMessage = document.getElementById('nodes-table-empty');
+    const paginationControls = document.getElementById('nodes-pagination-controls');
+    
+    // Render table rows
+    tbody.innerHTML = pageData.map(node => {
+        const labels = node.metadata.labels || {};
+        const nodegroup_name = labels['eks.amazonaws.com/nodegroup'];
+        const is_karpenter_or_auto = 'karpenter.sh/provisioner-name' in labels || labels['eks.amazonaws.com/compute-type'] === 'ec2';
+        const compute_display_name = nodegroup_name || (is_karpenter_or_auto ? 'Karpenter/Auto-Mode' : 'EC2 (Self-managed)');
+        const node_status_obj = (node.status.conditions || []).find(c => c.type === 'Ready');
+        const node_status = node_status_obj && node_status_obj.status === 'True' ? 'Ready' : 'NotReady';
+        const created_date = node.metadata.creationTimestamp ? node.metadata.creationTimestamp.split('T')[0] : 'N/A';
+        
+        return `
+            <tr>
+                <td>${node.metadata.name}</td>
+                <td><span class="status-badge status-${node_status.toLowerCase()}">${node_status}</span></td>
+                <td>${labels['node.kubernetes.io/instance-type'] || 'N/A'}</td>
+                <td>${compute_display_name}</td>
+                <td>${created_date}</td>
+            </tr>
+        `;
+    }).join('');
+    
+    // Update UI state
+    const hasData = filteredData.length > 0;
+    tableContainer.style.display = hasData ? 'block' : 'none';
+    paginationControls.style.display = hasData ? 'flex' : 'none';
+    emptyMessage.style.display = hasData ? 'none' : 'flex';
+    
+    if (hasData) {
+        const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+        document.getElementById('nodes-pagination-info').textContent = 
+            `Page ${currentPage} of ${totalPages} (${filteredData.length} nodes)`;
+        document.getElementById('nodes-pagination-prev').disabled = currentPage === 1;
+        document.getElementById('nodes-pagination-next').disabled = currentPage === totalPages;
+    }
+}
+
+// Render node groups table
+function renderNodegroupsTable() {
+    const { currentPage, itemsPerPage, filteredData } = nodegroupsPagination;
+    const start = (currentPage - 1) * itemsPerPage;
+    const end = start + itemsPerPage;
+    const pageData = filteredData.slice(start, end);
+    
+    const tbody = document.getElementById('nodegroups-table-body');
+    const tableContainer = document.querySelector('#nodegroups-table-body').closest('.table-container');
+    const emptyMessage = document.getElementById('nodegroups-table-empty');
+    const paginationControls = document.getElementById('nodegroups-pagination-controls');
+    
+    // Render table rows
+    tbody.innerHTML = pageData.map(ng => {
+        const status = ng.status || 'unknown';
+        const isUpToDate = ng.is_karpenter_node || ng.version === '{{ cluster.version }}';
+        const actionButton = isUpToDate ? 
+            '<span class="text-muted">Up to date</span>' : 
+            `<button class="action-btn upgrade-btn" data-nodegroup-name="${ng.name}"><i data-feather="chevrons-up"></i> Upgrade Now</button>`;
+        
+        return `
+            <tr>
+                <td>${ng.name}</td>
+                <td><span class="status-badge status-${status.toLowerCase()}">${status}</span></td>
+                <td>${ng.desired_size}</td>
+                <td>${ng.release_version}</td>
+                <td>${ng.version}</td>
+                <td>${actionButton}</td>
+            </tr>
+        `;
+    }).join('');
+    
+    // Update UI state
+    const hasData = filteredData.length > 0;
+    tableContainer.style.display = hasData ? 'block' : 'none';
+    paginationControls.style.display = hasData ? 'flex' : 'none';
+    emptyMessage.style.display = hasData ? 'none' : 'flex';
+    
+    if (hasData) {
+        const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+        document.getElementById('nodegroups-pagination-info').textContent = 
+            `Page ${currentPage} of ${totalPages} (${filteredData.length} node groups)`;
+        document.getElementById('nodegroups-pagination-prev').disabled = currentPage === 1;
+        document.getElementById('nodegroups-pagination-next').disabled = currentPage === totalPages;
+    }
+    
+    // Re-initialize feather icons for action buttons
+    if (typeof feather !== 'undefined') {
+        feather.replace();
+    }
+}
+
+// Setup nodes pagination events
+function setupNodesPaginationEvents() {
+    console.log('Setting up nodes pagination events...');
+    
+    document.getElementById('nodes-pagination-prev')?.addEventListener('click', () => {
+        console.log('Previous button clicked, current page:', nodesPagination.currentPage);
+        if (nodesPagination.currentPage > 1) {
+            nodesPagination.currentPage--;
+            renderNodesTable();
+        }
+    });
+    
+    document.getElementById('nodes-pagination-next')?.addEventListener('click', () => {
+        const totalPages = Math.ceil(nodesPagination.filteredData.length / nodesPagination.itemsPerPage);
+        console.log('Next button clicked, current page:', nodesPagination.currentPage, 'total pages:', totalPages);
+        if (nodesPagination.currentPage < totalPages) {
+            nodesPagination.currentPage++;
+            renderNodesTable();
+        }
+    });
+}
+
+// Setup node groups pagination events
+function setupNodegroupsPaginationEvents() {
+    document.getElementById('nodegroups-pagination-prev')?.addEventListener('click', () => {
+        if (nodegroupsPagination.currentPage > 1) {
+            nodegroupsPagination.currentPage--;
+            renderNodegroupsTable();
+        }
+    });
+    
+    document.getElementById('nodegroups-pagination-next')?.addEventListener('click', () => {
+        const totalPages = Math.ceil(nodegroupsPagination.filteredData.length / nodegroupsPagination.itemsPerPage);
+        if (nodegroupsPagination.currentPage < totalPages) {
+            nodegroupsPagination.currentPage++;
+            renderNodegroupsTable();
+        }
+    });
+}
+
+// Update node count display
+function updateNodeCount() {
     const countWrapper = document.getElementById('node-count-wrapper');
     const count = document.getElementById('node-count');
 
-    if (!filter || !countWrapper || !count) return;
+    if (!countWrapper || !count) return;
 
-    const selectedValue = filter.value;
-
-    if (selectedValue === 'all') {
-        countWrapper.style.display = 'none';
-        return;
-    }
-
-    countWrapper.style.display = 'inline';
-    const rows = document.querySelectorAll('#nodes-table tbody tr');
-    let visibleCount = 0;
-    rows.forEach(row => {
-        const isVisible = row.offsetParent !== null && row.style.display !== 'none';
-        if (isVisible) visibleCount++;
-    });
-    count.textContent = visibleCount;
+    // Always show the total count of all nodes, not filtered
+    const totalCount = nodesData.length;
+    count.textContent = totalCount;
+    countWrapper.style.display = totalCount > 0 ? 'inline' : 'none';
+    
+    console.log(`Total nodes count updated to: ${totalCount}`);
 }
 
-function runAfterRender(callback) {
-    requestAnimationFrame(() => setTimeout(callback, 0));
-}
-
-window.addEventListener('load', () => {
-    runAfterRender(updateNodeCount);
-
+// Initialize when DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+    console.log('DOM loaded, initializing compute tab...');
+    initializeComputeTab();
+    
     // Add animation on load
     const computeTab = document.getElementById('compute');
     if (computeTab) {
@@ -234,7 +451,15 @@ window.addEventListener('load', () => {
     }
 });
 
-document.getElementById('nodegroup-filter')?.addEventListener('change', () => {
-    runAfterRender(updateNodeCount);
-});
+// Also try to initialize when the compute tab is opened
+function initializeComputeTabOnTabSwitch() {
+    console.log('Compute tab opened, checking initialization...');
+    if (nodesData.length === 0 && nodegroupsData.length === 0) {
+        console.log('Data not loaded yet, re-initializing...');
+        initializeComputeTab();
+    }
+}
+
+// Make the function globally available for tab switching
+window.initializeComputeTabOnTabSwitch = initializeComputeTabOnTabSwitch;
 </script>
