@@ -870,6 +870,13 @@ def _process_cluster_data(c_raw, with_details=False, detail_results=None):
     else:
         eks_auto_mode_value = 'Disabled'
 
+    # Get deletion protection status
+    deletion_protection = c_raw.get("deletionProtection")
+    deletion_protection_status = "Enabled" if deletion_protection else "Disabled"
+
+    deletion_protection = c_raw.get("deletionProtection", False)
+    # print(f"---------Deletion protection: {c_raw}---------")
+
     cluster_data = {
         "name": c_raw.get("name"), "arn": c_raw.get("arn"), "account_id": c_raw.get("arn", "::::").split(':')[4],
         "roleArn": c_raw.get("roleArn"), "endpoint": c_raw.get("endpoint"),
@@ -880,6 +887,7 @@ def _process_cluster_data(c_raw, with_details=False, detail_results=None):
         "upgrade_insight_status": "PASSING" if version == "Unknown" or version >= "1.29" else "NEEDS_ATTENTION",
         "is_nearing_eol_90_days": bool(eol_date and now < eol_date <= ninety_days_from_now),
         "eks_auto_mode": eks_auto_mode_value,
+        "deletion_protection": deletion_protection_status,
         # Surface access configuration for UI (e.g., authentication mode)
         "access_config": c_raw.get("accessConfig", {}),
     }

@@ -37,6 +37,7 @@ class ClusterRegistry(Base):
     workloads = Column(JSON)
     last_updated = Column(DateTime, default=datetime.utcnow)
     table_name = Column(String, unique=True, nullable=False)  # Name of the cluster's dedicated table
+    deletion_protection = Column(String)  # Enabled, Disabled - from AWS EKS cluster
     
     # Composite unique constraint: same cluster name can exist in different regions/accounts
     __table_args__ = (
@@ -208,6 +209,7 @@ def update_cluster_data(session: Session, cluster_data: dict):
     cluster.tags = cluster_data.get('tags')
     cluster.health_issues = cluster_data.get('health_issues')
     cluster.eks_auto_mode = cluster_data.get('eks_auto_mode')
+    cluster.deletion_protection = cluster_data.get('deletion_protection')
     cluster.networking = cluster_data.get('networking')
     cluster.oidc_provider_url = cluster_data.get('oidc_provider_url')
     cluster.security_insights = cluster_data.get('security_insights')
