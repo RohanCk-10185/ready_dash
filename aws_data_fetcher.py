@@ -620,12 +620,37 @@ def get_control_plane_logs(account_id, region, cluster_name, role_arn=None):
         "apiserver_watch_cache_capacity": ('apiserver_watch_cache_capacity', 'Average'),
         "apiserver_watch_cache_capacity_increase_total": ('apiserver_watch_cache_capacity_increase_total', 'Sum'),
         "apiserver_watch_cache_capacity_decrease_total": ('apiserver_watch_cache_capacity_decrease_total', 'Sum'),
+        
+        # Scheduler Metrics - Use correct metric names from CloudWatch
+        "scheduler_schedule_attempts_SCHEDULED": ('scheduler_schedule_attempts_SCHEDULED', 'Sum'),
+        "scheduler_schedule_attempts_UNSCHEDULABLE": ('scheduler_schedule_attempts_UNSCHEDULABLE', 'Sum'),
+        "scheduler_schedule_attempts_ERROR": ('scheduler_schedule_attempts_ERROR', 'Sum'),
+        
+        # Pending Pods Metrics
+        "scheduler_pending_pods_GATED": ('scheduler_pending_pods_GATED', 'Maximum'),
+        "scheduler_pending_pods_UNSCHEDULABLE": ('scheduler_pending_pods_UNSCHEDULABLE', 'Maximum'),
+        "scheduler_pending_pods_ACTIVEQ": ('scheduler_pending_pods_ACTIVEQ', 'Maximum'),
+        "scheduler_pending_pods_BACKOFF": ('scheduler_pending_pods_BACKOFF', 'Maximum'),
+        
+        # API Server Request Latency Metrics (P99) - Use exact CloudWatch metric names
+        "apiserver_request_duration_seconds_GET_P99": ('apiserver_request_duration_seconds_GET_P99', 'Average'),
+        "apiserver_request_duration_seconds_POST_P99": ('apiserver_request_duration_seconds_POST_P99', 'Average'),
+        "apiserver_request_duration_seconds_PUT_P99": ('apiserver_request_duration_seconds_PUT_P99', 'Average'),
+        "apiserver_request_duration_seconds_DELETE_P99": ('apiserver_request_duration_seconds_DELETE_P99', 'Average'),
+        "apiserver_request_duration_seconds_LIST_P99": ('apiserver_request_duration_seconds_LIST_P99', 'Average'),
+        "apiserver_request_duration_seconds_PATCH_P99": ('apiserver_request_duration_seconds_PATCH_P99', 'Average'),
+        
+        # API Server Current Inflight Requests - Use exact CloudWatch metric names
+        "apiserver_current_inflight_requests_MUTATING": ('apiserver_current_inflight_requests_MUTATING', 'Sum'),
+        "apiserver_current_inflight_requests_READONLY": ('apiserver_current_inflight_requests_READONLY', 'Sum'),
     }
-
+    
     queries = []
     for i, (key, (name, stat)) in enumerate(control_plane_metrics.items()):
-        # For request metrics, we need to add dimensions for status codes
         dimensions = [{'Name': 'ClusterName', 'Value': cluster_name}]
+        
+        # API server metrics use complete metric names, no additional dimensions needed
+        # All metrics use only ClusterName dimension
         
         queries.append({
             'Id': f'cp{i}', 'Label': key,
@@ -655,6 +680,16 @@ def get_control_plane_logs(account_id, region, cluster_name, role_arn=None):
             label = res['Label']
             timestamps = [ts.isoformat() for ts in res['Timestamps']]
             values = res['Values']
+            
+            # Debug logging for scheduler metrics
+            if 'scheduler' in label:
+                logging.info(f"Scheduler metric {label}: {len(values)} values, timestamps: {len(timestamps)}")
+                logging.info(f"Values: {values[:5]}...")  # First 5 values
+            
+            # Debug logging for API server metrics
+            if 'apiserver' in label:
+                logging.info(f"API Server metric {label}: {len(values)} values, timestamps: {len(timestamps)}")
+                logging.info(f"Values: {values[:5]}...")  # First 5 values
             
             # Calculate current value (latest non-null value)
             current_value = None

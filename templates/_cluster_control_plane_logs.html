@@ -37,16 +37,29 @@
         
         .logs-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            grid-template-columns: repeat(3, 1fr);
             gap: 1.5rem;
+        }
+        
+        @media (max-width: 1200px) {
+            .logs-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .logs-grid {
+                grid-template-columns: 1fr;
+            }
         }
         
         .log-metric-card {
             background: var(--bg-color);
             border: 1px solid var(--border-color);
             border-radius: var(--border-radius);
-            padding: 1.5rem;
+            padding: 2rem;
             position: relative;
+            min-height: 320px;
         }
         
         .log-metric-header {
@@ -59,7 +72,7 @@
         .log-metric-header h5 {
             margin: 0;
             color: var(--text-primary);
-            font-size: 0.95rem;
+            font-size: 1.1rem;
             font-weight: 600;
         }
         
@@ -121,14 +134,21 @@
         
         
         .log-metric-chart {
-            height: 150px;
+            height: 220px;
             margin-bottom: 0.5rem;
         }
         
         .log-metric-legend {
-            font-size: 0.8rem;
+            font-size: 0.75rem;
             color: var(--text-secondary);
-            font-family: monospace;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            background: var(--bg-secondary);
+            padding: 0.4rem 0.6rem;
+            border-radius: 4px;
+            border: 1px solid var(--border-color);
+            word-break: break-all;
+            line-height: 1.3;
+            margin-top: 0.5rem;
         }
         
         .logs-loading, .logs-error {
@@ -244,6 +264,70 @@
                 <div class="log-metric-legend">apiserver_storage_size_bytes</div>
             </div>
             
+            <div class="log-metric-card">
+                <div class="log-metric-header">
+                    <h5>Scheduler Attempts</h5>
+                    <div class="log-metric-actions">
+                        <div class="tooltip">
+                            <i data-feather="info" class="info-icon"></i>
+                            <span class="tooltiptext">The number of scheduling attempts made by the Kubernetes scheduler. Shows successful scheduling attempts (SCHEDULED), failed attempts due to resource constraints (UNSCHEDULABLE), and errors (ERROR).</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="log-metric-chart">
+                    <canvas id="schedulerAttemptsChartTab"></canvas>
+                </div>
+                <div class="log-metric-legend">scheduler_schedule_attempts_SCHEDULED</div>
+            </div>
+            
+            <div class="log-metric-card">
+                <div class="log-metric-header">
+                    <h5>Pending Pods</h5>
+                    <div class="log-metric-actions">
+                        <div class="tooltip">
+                            <i data-feather="info" class="info-icon"></i>
+                            <span class="tooltiptext">The number of pods in different pending states in the scheduler queue. Shows GATED (waiting for conditions), UNSCHEDULABLE (cannot be scheduled), ACTIVEQ (active queue), and BACKOFF (retry with backoff).</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="log-metric-chart">
+                    <canvas id="pendingPodsChartTab"></canvas>
+                </div>
+                <div class="log-metric-legend">scheduler_pending_pods_GATED</div>
+            </div>
+            
+            <div class="log-metric-card">
+                <div class="log-metric-header">
+                    <h5>API Server Request Latency</h5>
+                    <div class="log-metric-actions">
+                        <div class="tooltip">
+                            <i data-feather="info" class="info-icon"></i>
+                            <span class="tooltiptext">P99 latency for different HTTP methods (GET, POST, PUT, DELETE) to the API server. Higher values indicate slower response times.</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="log-metric-chart">
+                    <canvas id="apiLatencyChartTab"></canvas>
+                </div>
+                <div class="log-metric-legend" id="apiLatencyLegend">apiserver_request_duration_seconds_GET_P99</div>
+            </div>
+            
+            <div class="log-metric-card">
+                <div class="log-metric-header">
+                    <h5>API Server Current Inflight Requests</h5>
+                    <div class="log-metric-actions">
+                        <div class="tooltip">
+                            <i data-feather="info" class="info-icon"></i>
+                            <span class="tooltiptext">Current number of inflight requests being processed by the API server. Shows MUTATING (write operations) and READONLY (read operations) requests.</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="log-metric-chart">
+                    <canvas id="apiInflightChartTab"></canvas>
+                </div>
+                <div class="log-metric-legend" id="apiInflightLegend">apiserver_current_inflight_requests_MUTATING</div>
+            </div>
+            
         </div>
         
         <div class="logs-loading" id="controlPlaneLogsLoadingTab" style="display: none;">
@@ -291,6 +375,11 @@
                 throw new Error(data.error);
             }
             
+            // Debug logging for scheduler metrics (can be removed in production)
+            if (data.scheduler_schedule_attempts_SCHEDULED) {
+                console.log('Scheduler SCHEDULED data received:', data.scheduler_schedule_attempts_SCHEDULED);
+            }
+            
             // Hide loading, show data
             loadingEl.style.display = 'none';
             logsContainer.style.display = 'block';
@@ -320,6 +409,18 @@
         
         // Update Storage Size chart
         updateLogChart('storageSizeChartTab', data.apiserver_storage_size_bytes, 'Storage Size Bytes');
+        
+        // Update Scheduler Attempts chart
+        updateSchedulerChart('schedulerAttemptsChartTab', data);
+        
+        // Update Pending Pods chart
+        updatePendingPodsChart('pendingPodsChartTab', data);
+        
+        // Update API Server Request Latency chart
+        updateApiLatencyChart('apiLatencyChartTab', data);
+        
+        // Update API Server Current Inflight Requests chart
+        updateApiInflightChart('apiInflightChartTab', data);
         
     }
     
@@ -351,7 +452,7 @@
                     data: values,
                     borderColor: '#0D6EFD',
                     backgroundColor: 'rgba(13, 110, 253, 0.1)',
-                    borderWidth: 2,
+                    borderWidth: 1.5,
                     fill: true,
                     tension: 0.1,
                     pointRadius: 0,
@@ -364,6 +465,770 @@
                 plugins: {
                     legend: {
                         display: false
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            displayFormats: {
+                                hour: 'HH:mm'
+                            }
+                        },
+                        grid: {
+                            display: false
+                        },
+                        ticks: {
+                            maxTicksLimit: 6
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        grid: {
+                            color: 'rgba(0, 0, 0, 0.1)'
+                        },
+                        ticks: {
+                            callback: function(value) {
+                                return formatValue(value);
+                            }
+                        }
+                    }
+                },
+                interaction: {
+                    intersect: false,
+                    mode: 'index'
+                }
+            }
+        });
+    }
+    
+    function updateSchedulerChart(canvasId, data) {
+        // Get or create chart
+        const canvas = document.getElementById(canvasId);
+        const ctx = canvas.getContext('2d');
+        
+        // Destroy existing chart if it exists
+        if (controlPlaneLogsCharts[canvasId]) {
+            controlPlaneLogsCharts[canvasId].destroy();
+        }
+        
+        // Prepare datasets for all scheduler metrics
+        const datasets = [];
+        const colors = {
+            'SCHEDULED': '#0D6EFD',
+            'UNSCHEDULABLE': '#FFC107', 
+            'ERROR': '#DC3545'
+        };
+        
+        // Add SCHEDULED metric (primary)
+        if (data.scheduler_schedule_attempts_SCHEDULED && data.scheduler_schedule_attempts_SCHEDULED.values && data.scheduler_schedule_attempts_SCHEDULED.values.length > 0) {
+            const timestamps = data.scheduler_schedule_attempts_SCHEDULED.timestamps.map(ts => new Date(ts));
+            datasets.push({
+                label: 'SCHEDULED',
+                data: data.scheduler_schedule_attempts_SCHEDULED.values,
+                borderColor: colors.SCHEDULED,
+                backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                borderWidth: 1.5,
+                fill: false,
+                tension: 0.1,
+                pointRadius: 0,
+                pointHoverRadius: 4
+            });
+        }
+        
+        // Add UNSCHEDULABLE metric (if available)
+        if (data.scheduler_schedule_attempts_UNSCHEDULABLE && data.scheduler_schedule_attempts_UNSCHEDULABLE.values && data.scheduler_schedule_attempts_UNSCHEDULABLE.values.length > 0) {
+            const timestamps = data.scheduler_schedule_attempts_UNSCHEDULABLE.timestamps.map(ts => new Date(ts));
+            datasets.push({
+                label: 'UNSCHEDULABLE',
+                data: data.scheduler_schedule_attempts_UNSCHEDULABLE.values,
+                borderColor: colors.UNSCHEDULABLE,
+                backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                borderWidth: 1.5,
+                fill: false,
+                tension: 0.1,
+                pointRadius: 0,
+                pointHoverRadius: 4
+            });
+        }
+        
+        // Add ERROR metric (if available)
+        if (data.scheduler_schedule_attempts_ERROR && data.scheduler_schedule_attempts_ERROR.values && data.scheduler_schedule_attempts_ERROR.values.length > 0) {
+            const timestamps = data.scheduler_schedule_attempts_ERROR.timestamps.map(ts => new Date(ts));
+            datasets.push({
+                label: 'ERROR',
+                data: data.scheduler_schedule_attempts_ERROR.values,
+                borderColor: colors.ERROR,
+                backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                borderWidth: 1.5,
+                fill: false,
+                tension: 0.1,
+                pointRadius: 0,
+                pointHoverRadius: 4
+            });
+        }
+        
+        // If no data available, show a message
+        if (datasets.length === 0) {
+            // Create a simple chart with "No Data" message
+            controlPlaneLogsCharts[canvasId] = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: ['No Data Available'],
+                    datasets: [{
+                        label: 'SCHEDULED',
+                        data: [0],
+                        borderColor: colors.SCHEDULED,
+                        backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                        borderWidth: 1.5,
+                        fill: false,
+                        pointRadius: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'bottom',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 20
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: 'Scheduler metrics not available in CloudWatch',
+                            font: {
+                                size: 12,
+                                color: '#666'
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            display: false
+                        },
+                        y: {
+                            display: false
+                        }
+                    }
+                }
+            });
+            return;
+        }
+        
+        // Use timestamps from the first available dataset
+        const firstDataset = datasets[0];
+        const timestamps = data.scheduler_schedule_attempts_SCHEDULED ? 
+            data.scheduler_schedule_attempts_SCHEDULED.timestamps.map(ts => new Date(ts)) :
+            (data.scheduler_schedule_attempts_UNSCHEDULABLE ? 
+                data.scheduler_schedule_attempts_UNSCHEDULABLE.timestamps.map(ts => new Date(ts)) :
+                data.scheduler_schedule_attempts_ERROR.timestamps.map(ts => new Date(ts)));
+        
+        // Create new chart
+        controlPlaneLogsCharts[canvasId] = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: timestamps,
+                datasets: datasets
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'bottom',
+                        labels: {
+                            usePointStyle: true,
+                            padding: 20
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            displayFormats: {
+                                hour: 'HH:mm'
+                            }
+                        },
+                        grid: {
+                            display: false
+                        },
+                        ticks: {
+                            maxTicksLimit: 6
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        grid: {
+                            color: 'rgba(0, 0, 0, 0.1)'
+                        },
+                        ticks: {
+                            callback: function(value) {
+                                return formatValue(value);
+                            }
+                        }
+                    }
+                },
+                interaction: {
+                    intersect: false,
+                    mode: 'index'
+                }
+            }
+        });
+    }
+    
+    function updatePendingPodsChart(canvasId, data) {
+        // Get or create chart
+        const canvas = document.getElementById(canvasId);
+        const ctx = canvas.getContext('2d');
+        
+        // Destroy existing chart if it exists
+        if (controlPlaneLogsCharts[canvasId]) {
+            controlPlaneLogsCharts[canvasId].destroy();
+        }
+        
+        // Prepare datasets for all pending pods metrics
+        const datasets = [];
+        const colors = {
+            'GATED': '#0D6EFD',        // Blue
+            'UNSCHEDULABLE': '#FFC107', // Orange
+            'ACTIVEQ': '#198754',       // Green
+            'BACKOFF': '#DC3545'        // Red
+        };
+        
+        // Add GATED metric (primary)
+        if (data.scheduler_pending_pods_GATED && data.scheduler_pending_pods_GATED.values && data.scheduler_pending_pods_GATED.values.length > 0) {
+            datasets.push({
+                label: 'GATED',
+                data: data.scheduler_pending_pods_GATED.values,
+                borderColor: colors.GATED,
+                backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                borderWidth: 1.5,
+                fill: false,
+                tension: 0.1,
+                pointRadius: 0,
+                pointHoverRadius: 4
+            });
+        }
+        
+        // Add UNSCHEDULABLE metric
+        if (data.scheduler_pending_pods_UNSCHEDULABLE && data.scheduler_pending_pods_UNSCHEDULABLE.values && data.scheduler_pending_pods_UNSCHEDULABLE.values.length > 0) {
+            datasets.push({
+                label: 'UNSCHEDULABLE',
+                data: data.scheduler_pending_pods_UNSCHEDULABLE.values,
+                borderColor: colors.UNSCHEDULABLE,
+                backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                borderWidth: 1.5,
+                fill: false,
+                tension: 0.1,
+                pointRadius: 0,
+                pointHoverRadius: 4
+            });
+        }
+        
+        // Add ACTIVEQ metric
+        if (data.scheduler_pending_pods_ACTIVEQ && data.scheduler_pending_pods_ACTIVEQ.values && data.scheduler_pending_pods_ACTIVEQ.values.length > 0) {
+            datasets.push({
+                label: 'ACTIVEQ',
+                data: data.scheduler_pending_pods_ACTIVEQ.values,
+                borderColor: colors.ACTIVEQ,
+                backgroundColor: 'rgba(25, 135, 84, 0.1)',
+                borderWidth: 1.5,
+                fill: false,
+                tension: 0.1,
+                pointRadius: 0,
+                pointHoverRadius: 4
+            });
+        }
+        
+        // Add BACKOFF metric
+        if (data.scheduler_pending_pods_BACKOFF && data.scheduler_pending_pods_BACKOFF.values && data.scheduler_pending_pods_BACKOFF.values.length > 0) {
+            datasets.push({
+                label: 'BACKOFF',
+                data: data.scheduler_pending_pods_BACKOFF.values,
+                borderColor: colors.BACKOFF,
+                backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                borderWidth: 1.5,
+                fill: false,
+                tension: 0.1,
+                pointRadius: 0,
+                pointHoverRadius: 4
+            });
+        }
+        
+        // If no data available, show a message
+        if (datasets.length === 0) {
+            // Create a simple chart with "No Data" message
+            controlPlaneLogsCharts[canvasId] = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: ['No Data Available'],
+                    datasets: [{
+                        label: 'GATED',
+                        data: [0],
+                        borderColor: colors.GATED,
+                        backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                        borderWidth: 1.5,
+                        fill: false,
+                        pointRadius: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'bottom',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 20
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: 'Pending pods metrics not available in CloudWatch',
+                            font: {
+                                size: 12,
+                                color: '#666'
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            display: false
+                        },
+                        y: {
+                            display: false
+                        }
+                    }
+                }
+            });
+            return;
+        }
+        
+        // Use timestamps from the first available dataset
+        const timestamps = data.scheduler_pending_pods_GATED ? 
+            data.scheduler_pending_pods_GATED.timestamps.map(ts => new Date(ts)) :
+            (data.scheduler_pending_pods_UNSCHEDULABLE ? 
+                data.scheduler_pending_pods_UNSCHEDULABLE.timestamps.map(ts => new Date(ts)) :
+                (data.scheduler_pending_pods_ACTIVEQ ? 
+                    data.scheduler_pending_pods_ACTIVEQ.timestamps.map(ts => new Date(ts)) :
+                    data.scheduler_pending_pods_BACKOFF.timestamps.map(ts => new Date(ts))));
+        
+        // Create new chart
+        controlPlaneLogsCharts[canvasId] = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: timestamps,
+                datasets: datasets
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'bottom',
+                        labels: {
+                            usePointStyle: true,
+                            padding: 20
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            displayFormats: {
+                                hour: 'HH:mm'
+                            }
+                        },
+                        grid: {
+                            display: false
+                        },
+                        ticks: {
+                            maxTicksLimit: 6
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        grid: {
+                            color: 'rgba(0, 0, 0, 0.1)'
+                        },
+                        ticks: {
+                            callback: function(value) {
+                                return formatValue(value);
+                            }
+                        }
+                    }
+                },
+                interaction: {
+                    intersect: false,
+                    mode: 'index'
+                }
+            }
+        });
+    }
+    
+    function updateApiLatencyChart(canvasId, data) {
+        // Get or create chart
+        const canvas = document.getElementById(canvasId);
+        const ctx = canvas.getContext('2d');
+        
+        // Destroy existing chart if it exists
+        if (controlPlaneLogsCharts[canvasId]) {
+            controlPlaneLogsCharts[canvasId].destroy();
+        }
+        
+        // Prepare datasets for all latency metrics
+        const datasets = [];
+        const colors = {
+            'GET': '#4cccff',     // Blue
+            'POST': '#f6933d',    // Orange
+            'PUT': '#7ded7f',     // Green
+            'DELETE': '#ff5757',  // Red
+            'LIST': '#7577ff',    // Purple
+            'PATCH': '#7b4e2a'    // Brown/Orange
+        };
+        
+        // Add GET latency metric
+        if (data.apiserver_request_duration_seconds_GET_P99 && data.apiserver_request_duration_seconds_GET_P99.values && data.apiserver_request_duration_seconds_GET_P99.values.length > 0) {
+            datasets.push({
+                label: 'GET P99',
+                data: data.apiserver_request_duration_seconds_GET_P99.values,
+                borderColor: colors.GET,
+                backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                borderWidth: 1.5,
+                fill: false,
+                tension: 0.1,
+                pointRadius: 0,
+                pointHoverRadius: 4
+            });
+        }
+        
+        // Add POST latency metric
+        if (data.apiserver_request_duration_seconds_POST_P99 && data.apiserver_request_duration_seconds_POST_P99.values && data.apiserver_request_duration_seconds_POST_P99.values.length > 0) {
+            datasets.push({
+                label: 'POST P99',
+                data: data.apiserver_request_duration_seconds_POST_P99.values,
+                borderColor: colors.POST,
+                backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                borderWidth: 1.5,
+                fill: false,
+                tension: 0.1,
+                pointRadius: 0,
+                pointHoverRadius: 4
+            });
+        }
+        
+        // Add PUT latency metric
+        if (data.apiserver_request_duration_seconds_PUT_P99 && data.apiserver_request_duration_seconds_PUT_P99.values && data.apiserver_request_duration_seconds_PUT_P99.values.length > 0) {
+            datasets.push({
+                label: 'PUT P99',
+                data: data.apiserver_request_duration_seconds_PUT_P99.values,
+                borderColor: colors.PUT,
+                backgroundColor: 'rgba(25, 135, 84, 0.1)',
+                borderWidth: 1.5,
+                fill: false,
+                tension: 0.1,
+                pointRadius: 0,
+                pointHoverRadius: 4
+            });
+        }
+        
+        // Add DELETE latency metric
+        if (data.apiserver_request_duration_seconds_DELETE_P99 && data.apiserver_request_duration_seconds_DELETE_P99.values && data.apiserver_request_duration_seconds_DELETE_P99.values.length > 0) {
+            datasets.push({
+                label: 'DELETE P99',
+                data: data.apiserver_request_duration_seconds_DELETE_P99.values,
+                borderColor: colors.DELETE,
+                backgroundColor: 'rgba(111, 66, 193, 0.1)',
+                borderWidth: 1.5,
+                fill: false,
+                tension: 0.1,
+                pointRadius: 0,
+                pointHoverRadius: 4
+            });
+        }
+        
+        // Add LIST latency metric
+        if (data.apiserver_request_duration_seconds_LIST_P99 && data.apiserver_request_duration_seconds_LIST_P99.values && data.apiserver_request_duration_seconds_LIST_P99.values.length > 0) {
+            datasets.push({
+                label: 'LIST P99',
+                data: data.apiserver_request_duration_seconds_LIST_P99.values,
+                borderColor: colors.LIST,
+                backgroundColor: 'rgba(111, 66, 193, 0.1)',
+                borderWidth: 1.5,
+                fill: false,
+                tension: 0.1,
+                pointRadius: 0,
+                pointHoverRadius: 4
+            });
+        }
+        
+        // Add PATCH latency metric
+        if (data.apiserver_request_duration_seconds_PATCH_P99 && data.apiserver_request_duration_seconds_PATCH_P99.values && data.apiserver_request_duration_seconds_PATCH_P99.values.length > 0) {
+            datasets.push({
+                label: 'PATCH P99',
+                data: data.apiserver_request_duration_seconds_PATCH_P99.values,
+                borderColor: colors.PATCH,
+                backgroundColor: 'rgba(253, 126, 20, 0.1)',
+                borderWidth: 1.5,
+                fill: false,
+                tension: 0.1,
+                pointRadius: 0,
+                pointHoverRadius: 4
+            });
+        }
+        
+        // If no data available, show a message
+        if (datasets.length === 0) {
+            controlPlaneLogsCharts[canvasId] = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: ['No Data Available'],
+                    datasets: [{
+                        label: 'GET P99',
+                        data: [0],
+                        borderColor: colors.GET,
+                        backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                        borderWidth: 1.5,
+                        fill: false,
+                        pointRadius: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'bottom',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 20
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: 'API server latency metrics not available in CloudWatch',
+                            font: {
+                                size: 12,
+                                color: '#666'
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            display: false
+                        },
+                        y: {
+                            display: false
+                        }
+                    }
+                }
+            });
+            return;
+        }
+        
+        // Use timestamps from the first available dataset
+        const timestamps = data.apiserver_request_duration_seconds_GET_P99 ? 
+            data.apiserver_request_duration_seconds_GET_P99.timestamps.map(ts => new Date(ts)) :
+            (data.apiserver_request_duration_seconds_POST_P99 ? 
+                data.apiserver_request_duration_seconds_POST_P99.timestamps.map(ts => new Date(ts)) :
+                (data.apiserver_request_duration_seconds_PUT_P99 ? 
+                    data.apiserver_request_duration_seconds_PUT_P99.timestamps.map(ts => new Date(ts)) :
+                    (data.apiserver_request_duration_seconds_DELETE_P99 ? 
+                        data.apiserver_request_duration_seconds_DELETE_P99.timestamps.map(ts => new Date(ts)) :
+                        (data.apiserver_request_duration_seconds_LIST_P99 ? 
+                            data.apiserver_request_duration_seconds_LIST_P99.timestamps.map(ts => new Date(ts)) :
+                            data.apiserver_request_duration_seconds_PATCH_P99.timestamps.map(ts => new Date(ts))))));
+        
+        // Update legend with all variable values
+        const legendElement = document.getElementById('apiLatencyLegend');
+        if (legendElement) {
+            const variableNames = datasets.map(dataset => dataset.label).join(', ');
+            legendElement.textContent = variableNames;
+        }
+        
+        // Create new chart
+        controlPlaneLogsCharts[canvasId] = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: timestamps,
+                datasets: datasets
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false  // Hide chart legend since we show it below
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            displayFormats: {
+                                hour: 'HH:mm'
+                            }
+                        },
+                        grid: {
+                            display: false
+                        },
+                        ticks: {
+                            maxTicksLimit: 6
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        grid: {
+                            color: 'rgba(0, 0, 0, 0.1)'
+                        },
+                        ticks: {
+                            callback: function(value) {
+                                return value.toFixed(3) + 's';
+                            }
+                        }
+                    }
+                },
+                interaction: {
+                    intersect: false,
+                    mode: 'index'
+                }
+            }
+        });
+    }
+    
+    function updateApiInflightChart(canvasId, data) {
+        // Get or create chart
+        const canvas = document.getElementById(canvasId);
+        const ctx = canvas.getContext('2d');
+        
+        // Destroy existing chart if it exists
+        if (controlPlaneLogsCharts[canvasId]) {
+            controlPlaneLogsCharts[canvasId].destroy();
+        }
+        
+        // Prepare datasets for inflight requests metrics
+        const datasets = [];
+        const colors = {
+            'MUTATING': '#4cccff',  // Blue
+            'READONLY': '#ff7300'   // Orange
+        };
+        
+        // Add MUTATING requests metric
+        if (data.apiserver_current_inflight_requests_MUTATING && data.apiserver_current_inflight_requests_MUTATING.values && data.apiserver_current_inflight_requests_MUTATING.values.length > 0) {
+            datasets.push({
+                label: 'MUTATING',
+                data: data.apiserver_current_inflight_requests_MUTATING.values,
+                borderColor: colors.MUTATING,
+                backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                borderWidth: 1.5,
+                fill: false,
+                tension: 0.1,
+                pointRadius: 0,
+                pointHoverRadius: 4
+            });
+        }
+        
+        // Add READONLY requests metric
+        if (data.apiserver_current_inflight_requests_READONLY && data.apiserver_current_inflight_requests_READONLY.values && data.apiserver_current_inflight_requests_READONLY.values.length > 0) {
+            datasets.push({
+                label: 'READONLY',
+                data: data.apiserver_current_inflight_requests_READONLY.values,
+                borderColor: colors.READONLY,
+                backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                borderWidth: 1.5,
+                fill: false,
+                tension: 0.1,
+                pointRadius: 0,
+                pointHoverRadius: 4
+            });
+        }
+        
+        // If no data available, show a message
+        if (datasets.length === 0) {
+            controlPlaneLogsCharts[canvasId] = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: ['No Data Available'],
+                    datasets: [{
+                        label: 'MUTATING',
+                        data: [0],
+                        borderColor: colors.MUTATING,
+                        backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                        borderWidth: 1.5,
+                        fill: false,
+                        pointRadius: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'bottom',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 20
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: 'API server inflight requests metrics not available in CloudWatch',
+                            font: {
+                                size: 12,
+                                color: '#666'
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            display: false
+                        },
+                        y: {
+                            display: false
+                        }
+                    }
+                }
+            });
+            return;
+        }
+        
+        // Use timestamps from the first available dataset
+        const timestamps = data.apiserver_current_inflight_requests_MUTATING ? 
+            data.apiserver_current_inflight_requests_MUTATING.timestamps.map(ts => new Date(ts)) :
+            data.apiserver_current_inflight_requests_READONLY.timestamps.map(ts => new Date(ts));
+        
+        // Update legend with all variable values
+        const legendElement = document.getElementById('apiInflightLegend');
+        if (legendElement) {
+            const variableNames = datasets.map(dataset => dataset.label).join(', ');
+            legendElement.textContent = variableNames;
+        }
+        
+        // Create new chart
+        controlPlaneLogsCharts[canvasId] = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: timestamps,
+                datasets: datasets
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false  // Hide chart legend since we show it below
                     }
                 },
                 scales: {
